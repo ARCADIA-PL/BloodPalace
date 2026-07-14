@@ -1,0 +1,5 @@
+{
+  "name": "dungeons_arise:underworld/foundry/foundry_spawners",
+  "fallback": "minecraft:empty",
+  "elements": []
+}

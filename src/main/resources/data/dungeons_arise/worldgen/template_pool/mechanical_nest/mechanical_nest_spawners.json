@@ -1,0 +1,5 @@
+{
+  "name": "dungeons_arise:mechanical_nest/mechanical_nest_spawners",
+  "fallback": "minecraft:empty",
+  "elements": []
+}

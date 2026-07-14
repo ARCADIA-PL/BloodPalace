@@ -1,0 +1,5 @@
+{
+  "name": "dungeons_arise:bathhouse/bathhouse_spawners",
+  "fallback": "minecraft:empty",
+  "elements": []
+}

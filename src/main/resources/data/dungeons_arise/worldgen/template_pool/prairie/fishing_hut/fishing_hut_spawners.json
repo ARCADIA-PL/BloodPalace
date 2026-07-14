@@ -1,0 +1,5 @@
+{
+  "name": "dungeons_arise:prairie/fishing_hut/fishing_hut_spawners",
+  "fallback": "minecraft:empty",
+  "elements": []
+}

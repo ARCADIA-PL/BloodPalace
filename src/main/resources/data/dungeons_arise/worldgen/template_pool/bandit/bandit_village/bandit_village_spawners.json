@@ -1,0 +1,5 @@
+{
+  "name": "dungeons_arise:bandit/bandit_village/bandit_village_spawners",
+  "fallback": "minecraft:empty",
+  "elements": []
+}

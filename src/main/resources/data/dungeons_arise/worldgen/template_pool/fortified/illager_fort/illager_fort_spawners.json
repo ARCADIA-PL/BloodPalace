@@ -1,0 +1,5 @@
+{
+  "name": "dungeons_arise:fortified/illager_fort/illager_fort_spawners",
+  "fallback": "minecraft:empty",
+  "elements": []
+}

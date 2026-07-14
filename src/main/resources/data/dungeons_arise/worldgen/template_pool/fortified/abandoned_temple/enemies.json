@@ -1,0 +1,5 @@
+{
+  "name": "dungeons_arise:fortified/abandoned_temple/enemies",
+  "fallback": "minecraft:empty",
+  "elements": []
+}
