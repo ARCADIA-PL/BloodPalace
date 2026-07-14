@@ -8,14 +8,19 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.TicketType;
+import net.minecraft.util.Unit;
+import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.ChunkStatus;
+import net.minecraft.world.level.chunk.LevelChunk;
 import org.com.bloodplace.handler.ShowcaseHandler;
 
 import java.util.List;
@@ -122,17 +127,37 @@ public class BloodPlaceCommand {
         player.getPersistentData().putFloat("bp_origin_yaw", player.getYRot());
         player.getPersistentData().putFloat("bp_origin_pitch", player.getXRot());
 
-        // Teleport to dimension spawn
-        player.teleportTo(showcaseLevel,
-            0.5, 120.0, 0.5,
-            player.getYRot(), player.getXRot());
+        // Force-load chunks around spawn so the structure generates before the player arrives
+        ChunkPos center = new ChunkPos(0, 0);
+        showcaseLevel.getChunkSource().addRegionTicket(
+            TicketType.START, center, 8, Unit.INSTANCE);
 
         source.sendSuccess(
-            () -> Component.literal("§a已传送到 §6" +
-                formatName(structureName) + " §a展示维度"),
+            () -> Component.literal("§7正在生成 §6" + formatName(structureName) + "§7..."),
             false);
 
+        // Poll until the spawn chunk is fully generated, then teleport
+        pollAndTeleport(source.getServer(), player, showcaseLevel, structureName, 0);
+
         return 1;
+    }
+
+    private static void pollAndTeleport(MinecraftServer server,
+            ServerPlayer player, ServerLevel level, String structureName, int attempt) {
+        if (attempt > 120) {
+            // Timeout after 60 seconds — teleport anyway
+            player.teleportTo(level, 0.5, 120.0, 0.5, player.getYRot(), player.getXRot());
+            return;
+        }
+        var chunk = level.getChunkSource().getChunkNow(0, 0);
+        if (chunk instanceof LevelChunk
+            && chunk.getStatus().isOrAfter(ChunkStatus.FULL)) {
+            player.teleportTo(level, 0.5, 120.0, 0.5, player.getYRot(), player.getXRot());
+        } else {
+            server.tell(new net.minecraft.server.TickTask(
+                server.getTickCount() + 10, () ->
+                pollAndTeleport(server, player, level, structureName, attempt + 1)));
+        }
     }
 
     private static int goBack(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
