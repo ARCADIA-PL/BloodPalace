@@ -21,7 +21,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public class CleanStructureMixin {
 
     @Inject(method = "placeInWorld", at = @At("RETURN"))
-    private void bloodplace$removeSpawnersAndEntities(
+    private void bloodplace$removeSpawners(
             ServerLevelAccessor level, BlockPos pos, BlockPos pivot,
             StructurePlaceSettings settings, RandomSource random, int flags,
             CallbackInfoReturnable<Boolean> cir) {
@@ -31,20 +31,15 @@ public class CleanStructureMixin {
         if (!bloodplace$isShowcaseDimension(sl.dimension().location())) return;
 
         StructureTemplate self = (StructureTemplate) (Object) this;
-        Vec3i size = self.getSize();
+
+        Vec3i size = self.getSize(settings.getRotation());
+
         BlockPos.MutableBlockPos scanPos = new BlockPos.MutableBlockPos();
 
-        int minX = pos.getX();
-        int minY = pos.getY();
-        int minZ = pos.getZ();
-        int maxX = minX + size.getX();
-        int maxY = minY + size.getY();
-        int maxZ = minZ + size.getZ();
-
-        for (int x = minX; x < maxX; x++) {
-            for (int y = minY; y < maxY; y++) {
-                for (int z = minZ; z < maxZ; z++) {
-                    scanPos.set(x, y, z);
+        for (int x = 0; x < size.getX(); x++) {
+            for (int y = 0; y < size.getY(); y++) {
+                for (int z = 0; z < size.getZ(); z++) {
+                    scanPos.set(pos.getX() + x, pos.getY() + y, pos.getZ() + z);
                     BlockState state = sl.getBlockState(scanPos);
                     if (state.getBlock() instanceof SpawnerBlock) {
                         sl.setBlock(scanPos, Blocks.AIR.defaultBlockState(), 3);

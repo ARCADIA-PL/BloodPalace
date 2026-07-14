@@ -7,10 +7,8 @@
       "lakes": false,
       "features": false,
       "layers": [
-        { "block": "minecraft:bedrock", "height": 1 },
-        { "block": "minecraft:stone", "height": 120 },
-        { "block": "minecraft:dirt", "height": 5 },
-        { "block": "minecraft:grass_block", "height": 1 }
+        { "block": "minecraft:barrier", "height": 1 },
+        { "block": "minecraft:air", "height": 255 }
       ],
       "structure_overrides": [
         "dungeons_arise:illager_corsair"
