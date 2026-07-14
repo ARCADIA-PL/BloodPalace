@@ -34,8 +34,8 @@ public class ShowcaseHandler {
     // Structure → preload chunk radius (max_distance_from_center / 16, rounded up)
     private static final Map<String, Integer> HEAVY_STRUCTURES = new LinkedHashMap<>();
     static {
-        HEAVY_STRUCTURES.put("keep_kayra",        24);
-        HEAVY_STRUCTURES.put("mechanical_nest",   24);
+        HEAVY_STRUCTURES.put("keep_kayra",        16);
+        HEAVY_STRUCTURES.put("mechanical_nest",   16);
     }
 
     @SubscribeEvent
