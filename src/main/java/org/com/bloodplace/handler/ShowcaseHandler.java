@@ -1,5 +1,7 @@
 package org.com.bloodplace.handler;
 
+import com.mojang.logging.LogUtils;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -8,12 +10,18 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.border.WorldBorder;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -21,21 +29,21 @@ import java.util.Comparator;
 
 public class ShowcaseHandler {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final int BORDER_SIZE = 500;
 
-    // ── Startup: wipe all showcase dimension saves so they generate fresh ──
+    // ── Startup / shutdown: wipe all showcase saves ──
     @SubscribeEvent
     public void onServerAboutToStart(ServerAboutToStartEvent event) {
         deleteAllShowcaseDirs(event.getServer());
     }
 
-    // ── Shutdown: clean up so nothing persists to disk ──
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
         deleteAllShowcaseDirs(event.getServer());
     }
 
-    // ── Enter showcase dim: set border ──
+    // ── Dimension change: border + spawner cleanup + reset ──
     @SubscribeEvent
     public void onPlayerChangeDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
@@ -43,20 +51,24 @@ public class ShowcaseHandler {
         ResourceLocation toDim = event.getTo().location();
         ResourceLocation fromDim = event.getFrom().location();
 
+        // Entering a showcase dimension
         if (isShowcaseDimension(toDim)) {
             WorldBorder border = player.serverLevel().getWorldBorder();
             border.setCenter(0, 0);
             border.setSize(BORDER_SIZE);
             border.setDamagePerBlock(0.1);
             border.setWarningBlocks(20);
+
+            // Schedule spawner block removal after chunks have loaded
+            scheduleSpawnerRemoval(player.getServer(), toDim);
         }
 
-        // Leaving a showcase — if now empty, wipe its save so next visit is fresh
+        // Leaving a showcase dimension — if now empty, fully reset it
         if (isShowcaseDimension(fromDim)) {
             ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, fromDim);
             ServerLevel leftLevel = player.getServer().getLevel(key);
             if (leftLevel != null && leftLevel.players().isEmpty()) {
-                deleteDimensionDir(player.getServer(), fromDim.getPath());
+                resetDimension(player.getServer(), key, fromDim.getPath());
             }
         }
     }
@@ -88,6 +100,49 @@ public class ShowcaseHandler {
     }
 
     // ═══════════════════════════════════════════
+    //  Spawner removal
+    // ═══════════════════════════════════════════
+
+    /**
+     * Schedule a one-shot spawner scan ~1 second after entering the dimension
+     * (waits for chunks around the player to finish loading)
+     */
+    private static void scheduleSpawnerRemoval(MinecraftServer server, ResourceLocation dimId) {
+        ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, dimId);
+        int execTick = server.getTickCount() + 20;
+        server.tell(new net.minecraft.server.TickTask(execTick, () -> {
+            ServerLevel level = server.getLevel(key);
+            if (level != null) {
+                int removed = removeSpawnersFromLevel(level);
+                if (removed > 0) {
+                    LOGGER.info("BloodPlace: cleaned {} spawner(s) from {}", removed, dimId.getPath());
+                }
+            }
+        }));
+    }
+
+    private static int removeSpawnersFromLevel(ServerLevel level) {
+        var spawnerPositions = new java.util.ArrayList<BlockPos>();
+        var cache = level.getChunkSource();
+        for (int cx = -30; cx <= 30; cx++) {
+            for (int cz = -30; cz <= 30; cz++) {
+                ChunkAccess access = cache.getChunkNow(cx, cz);
+                if (!(access instanceof LevelChunk chunk)) continue;
+                for (BlockPos pos : chunk.getBlockEntities().keySet()) {
+                    BlockEntity be = chunk.getBlockEntity(pos);
+                    if (be instanceof SpawnerBlockEntity) {
+                        spawnerPositions.add(pos.immutable());
+                    }
+                }
+            }
+        }
+        for (BlockPos pos : spawnerPositions) {
+            level.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
+        }
+        return spawnerPositions.size();
+    }
+
+    // ═══════════════════════════════════════════
     //  Helpers
     // ═══════════════════════════════════════════
 
@@ -96,7 +151,15 @@ public class ShowcaseHandler {
             && dimId.getPath().endsWith("_showcase");
     }
 
-    private static void deleteAllShowcaseDirs(MinecraftServer server) {
+    /**
+     * Delete on-disk save. Chunks still in memory persist until server restart,
+     * but spawners are cleaned on entry. Next server start → fresh generation.
+     */
+    public static void resetDimension(MinecraftServer server, ResourceKey<Level> dimKey, String dimName) {
+        deleteDimensionDir(server, dimName);
+    }
+
+    static void deleteAllShowcaseDirs(MinecraftServer server) {
         Path dimsDir = server.getServerDirectory().toPath()
             .resolve("dimensions").resolve("bloodplace");
         if (!Files.exists(dimsDir)) return;
@@ -111,7 +174,7 @@ public class ShowcaseHandler {
         }
     }
 
-    private static void deleteDimensionDir(MinecraftServer server, String dimName) {
+    public static void deleteDimensionDir(MinecraftServer server, String dimName) {
         Path dimDir = server.getServerDirectory().toPath()
             .resolve("dimensions").resolve("bloodplace").resolve(dimName);
         if (Files.exists(dimDir)) {

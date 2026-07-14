@@ -16,6 +16,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import org.com.bloodplace.handler.ShowcaseHandler;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -101,6 +102,9 @@ public class BloodPlaceCommand {
 
         ResourceLocation dimId = ResourceLocation.fromNamespaceAndPath("bloodplace", structureName + "_showcase");
         ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, dimId);
+
+        // Reset: unload from memory + delete save → getLevel creates fresh dimension
+        ShowcaseHandler.resetDimension(source.getServer(), dimKey, structureName + "_showcase");
 
         ServerLevel showcaseLevel = source.getServer().getLevel(dimKey);
         if (showcaseLevel == null) {
