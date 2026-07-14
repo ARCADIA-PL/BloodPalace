@@ -8,25 +8,28 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.HolderSet;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.server.level.TicketType;
-import net.minecraft.util.Unit;
-import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.chunk.ChunkStatus;
-import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.levelgen.structure.Structure;
 import org.com.bloodplace.handler.ShowcaseHandler;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public class BloodPlaceCommand {
+
+    public static final String SHOWCASE_DIM = "bloodplace:showcase";
+    private static final ResourceKey<Level> SHOWCASE_KEY =
+        ResourceKey.create(Registries.DIMENSION,
+            ResourceLocation.fromNamespaceAndPath("bloodplace", "showcase"));
 
     public static final List<String> STRUCTURES = List.of(
         "abandoned_temple", "aviary", "bandit_towers", "bandit_village", "bathhouse",
@@ -50,28 +53,24 @@ public class BloodPlaceCommand {
                     .executes(BloodPlaceCommand::goBack))
                 .then(Commands.argument("structure", StringArgumentType.word())
                     .suggests(BloodPlaceCommand::suggestStructures)
-                    .executes(ctx -> teleportToShowcase(
+                    .executes(ctx -> teleportToStructure(
                         ctx.getSource(),
                         StringArgumentType.getString(ctx, "structure"))))
         );
     }
 
     private static int showHelp(CommandContext<CommandSourceStack> ctx) {
-        ctx.getSource().sendSuccess(
-            () -> Component.literal(
-                "§6===== BloodPlace Showcase =====\n" +
-                "§e/bloodplace list §7— §f列出所有可用结构\n" +
-                "§e/bloodplace <名称> §7— §f传送到结构展示维度\n" +
-                "§e/bloodplace back §7— §f返回主世界"),
-            false);
+        ctx.getSource().sendSuccess(() -> Component.literal(
+            "§6===== BloodPlace Showcase =====\n" +
+            "§e/bloodplace list §7— §f列出所有可用结构\n" +
+            "§e/bloodplace <名称> §7— §f传送到展示维度的结构\n" +
+            "§e/bloodplace back §7— §f返回主世界"), false);
         return 1;
     }
 
     private static int listStructures(CommandContext<CommandSourceStack> ctx) {
         ctx.getSource().sendSuccess(
-            () -> Component.literal("§6===== §e" + STRUCTURES.size() + "§6 个可用结构 ====="),
-            false);
-
+            () -> Component.literal("§6===== §e" + STRUCTURES.size() + "§6 个可用结构 ====="), false);
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < STRUCTURES.size(); i++) {
             sb.append("§7").append(String.format("%2d", i + 1))
@@ -79,9 +78,6 @@ public class BloodPlaceCommand {
               .append(i % 3 == 2 ? "\n" : "    ");
         }
         ctx.getSource().sendSuccess(() -> Component.literal(sb.toString()), false);
-        ctx.getSource().sendSuccess(
-            () -> Component.literal("§7使用 §e/bloodplace <名称> §7进入展示维度"),
-            false);
         return 1;
     }
 
@@ -89,120 +85,97 @@ public class BloodPlaceCommand {
             CommandContext<CommandSourceStack> ctx, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining().toLowerCase();
         for (String name : STRUCTURES) {
-            if (name.startsWith(remaining)) {
-                builder.suggest(name);
-            }
+            if (name.startsWith(remaining)) builder.suggest(name);
         }
         return builder.buildFuture();
     }
 
-    private static int teleportToShowcase(CommandSourceStack source, String structureName) throws CommandSyntaxException {
+    // ── /bloodplace <name> ──
+    private static int teleportToStructure(CommandSourceStack source, String structureName)
+            throws CommandSyntaxException {
         if (!STRUCTURES.contains(structureName)) {
             source.sendFailure(Component.literal("§c未知结构: " + structureName));
-            source.sendFailure(Component.literal("§7使用 §e/bloodplace list §7查看所有可用结构"));
             return 0;
         }
-
         ServerPlayer player = source.getPlayerOrException();
 
-        ResourceLocation dimId = ResourceLocation.fromNamespaceAndPath("bloodplace", structureName + "_showcase");
-        ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, dimId);
-
-        // Reset: unload from memory + delete save → getLevel creates fresh dimension
-        ShowcaseHandler.resetDimension(source.getServer(), dimKey, structureName + "_showcase");
-
-        ServerLevel showcaseLevel = source.getServer().getLevel(dimKey);
-        if (showcaseLevel == null) {
-            source.sendFailure(Component.literal("§c展示维度不存在: " + dimId));
+        // Ensure showcase dimension
+        ServerLevel showcase = source.getServer().getLevel(SHOWCASE_KEY);
+        if (showcase == null) {
+            source.sendFailure(Component.literal("§c展示维度不存在"));
             return 0;
         }
 
-        // Store origin for /bloodplace back
-        Level originLevel = player.level();
-        player.getPersistentData().putString("bp_origin_dim",
-            originLevel.dimension().location().toString());
-        player.getPersistentData().putDouble("bp_origin_x", player.getX());
-        player.getPersistentData().putDouble("bp_origin_y", player.getY());
-        player.getPersistentData().putDouble("bp_origin_z", player.getZ());
-        player.getPersistentData().putFloat("bp_origin_yaw", player.getYRot());
-        player.getPersistentData().putFloat("bp_origin_pitch", player.getXRot());
+        // Store origin
+        Level origin = player.level();
+        if (!SHOWCASE_KEY.equals(origin.dimension())) {
+            player.getPersistentData().putString("bp_origin_dim",
+                origin.dimension().location().toString());
+            player.getPersistentData().putDouble("bp_origin_x", player.getX());
+            player.getPersistentData().putDouble("bp_origin_y", player.getY());
+            player.getPersistentData().putDouble("bp_origin_z", player.getZ());
+        }
 
-        // Force-load chunks around spawn so the structure generates before the player arrives
-        ChunkPos center = new ChunkPos(0, 0);
-        showcaseLevel.getChunkSource().addRegionTicket(
-            TicketType.START, center, 8, Unit.INSTANCE);
+        // Locate structure
+        BlockPos pos = locate(showcase, structureName);
+        if (pos.equals(BlockPos.ZERO)) {
+            source.sendFailure(Component.literal("§c无法定位结构: " + structureName));
+            return 0;
+        }
+
+        player.teleportTo(showcase, pos.getX() + 0.5, pos.getY() + 10, pos.getZ() + 0.5,
+            player.getYRot(), player.getXRot());
 
         source.sendSuccess(
-            () -> Component.literal("§7正在生成 §6" + formatName(structureName) + "§7..."),
-            false);
-
-        // Poll until the spawn chunk is fully generated, then teleport
-        pollAndTeleport(source.getServer(), player, showcaseLevel, structureName, 0);
-
+            () -> Component.literal("§a已传送到 §6" + formatName(structureName)), false);
         return 1;
     }
 
-    private static void pollAndTeleport(MinecraftServer server,
-            ServerPlayer player, ServerLevel level, String structureName, int attempt) {
-        if (attempt > 120) {
-            // Timeout after 60 seconds — teleport anyway
-            player.teleportTo(level, 0.5, 120.0, 0.5, player.getYRot(), player.getXRot());
-            return;
-        }
-        var chunk = level.getChunkSource().getChunkNow(0, 0);
-        if (chunk instanceof LevelChunk
-            && chunk.getStatus().isOrAfter(ChunkStatus.FULL)) {
-            player.teleportTo(level, 0.5, 120.0, 0.5, player.getYRot(), player.getXRot());
-        } else {
-            server.tell(new net.minecraft.server.TickTask(
-                server.getTickCount() + 10, () ->
-                pollAndTeleport(server, player, level, structureName, attempt + 1)));
-        }
-    }
-
+    // ── /bloodplace back ──
     private static int goBack(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
         ServerPlayer player = ctx.getSource().getPlayerOrException();
-
         if (!player.getPersistentData().contains("bp_origin_dim")) {
             ctx.getSource().sendFailure(Component.literal("§c没有之前的传送记录"));
             return 0;
         }
-
         String dimStr = player.getPersistentData().getString("bp_origin_dim");
-        double x = player.getPersistentData().getDouble("bp_origin_x");
-        double y = player.getPersistentData().getDouble("bp_origin_y");
-        double z = player.getPersistentData().getDouble("bp_origin_z");
-        float yaw = player.getPersistentData().getFloat("bp_origin_yaw");
-        float pitch = player.getPersistentData().getFloat("bp_origin_pitch");
-
         ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION,
-                ResourceLocation.parse(dimStr));
+            ResourceLocation.parse(dimStr));
         ServerLevel targetLevel = ctx.getSource().getServer().getLevel(dimKey);
-
         if (targetLevel == null) {
-            ctx.getSource().sendFailure(Component.literal("§c无法找到原始维度: " + dimStr));
+            ctx.getSource().sendFailure(Component.literal("§c无法找到原始维度"));
             return 0;
         }
-
-        player.teleportTo(targetLevel, x, y, z, yaw, pitch);
-
-        // Clean up stored data
+        player.teleportTo(targetLevel,
+            player.getPersistentData().getDouble("bp_origin_x"),
+            player.getPersistentData().getDouble("bp_origin_y"),
+            player.getPersistentData().getDouble("bp_origin_z"),
+            player.getPersistentData().getFloat("bp_origin_yaw"),
+            player.getPersistentData().getFloat("bp_origin_pitch"));
         player.getPersistentData().remove("bp_origin_dim");
-        player.getPersistentData().remove("bp_origin_x");
-        player.getPersistentData().remove("bp_origin_y");
-        player.getPersistentData().remove("bp_origin_z");
-        player.getPersistentData().remove("bp_origin_yaw");
-        player.getPersistentData().remove("bp_origin_pitch");
-
         ctx.getSource().sendSuccess(() -> Component.literal("§a已返回"), false);
         return 1;
+    }
+
+    // ── Locate ──
+    private static BlockPos locate(ServerLevel level, String name) {
+        ResourceKey<Structure> key = ResourceKey.create(Registries.STRUCTURE,
+            ResourceLocation.fromNamespaceAndPath("dungeons_arise", name));
+        var reg = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
+        var holder = reg.getHolder(key);
+        if (holder.isEmpty()) return BlockPos.ZERO;
+        var result = level.getChunkSource().getGenerator()
+            .findNearestMapStructure(level,
+                HolderSet.direct(holder.get()),
+                new BlockPos(0, 120, 0), 400, false);
+        return result != null ? result.getFirst() : BlockPos.ZERO;
     }
 
     private static String formatName(String name) {
         String[] words = name.split("_");
         StringBuilder sb = new StringBuilder();
         for (String w : words) {
-            if (!sb.isEmpty()) sb.append(" ");
+            if (sb.length() > 0) sb.append(" ");
             sb.append(Character.toUpperCase(w.charAt(0))).append(w.substring(1));
         }
         return sb.toString();

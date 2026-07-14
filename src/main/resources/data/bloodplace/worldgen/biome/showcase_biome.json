@@ -8,8 +8,7 @@
     "water_color": 4159204,
     "water_fog_color": 329011,
     "grass_color": 9470285,
-    "foliage_color": 10387789,
-    "grass_color_modifier": "none"
+    "foliage_color": 10387789
   },
   "spawners": {
     "monster": [],
@@ -24,16 +23,6 @@
   "spawn_costs": {},
   "carvers": { "air": [] },
   "features": [
-    [],
-    [],
-    [],
-    [],
-    [],
-    [],
-    [],
-    [],
-    [],
-    [],
-    []
+    [], [], [], [], [], [], [], [], [], [], []
   ]
 }

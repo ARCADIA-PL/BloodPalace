@@ -1,6 +1,1 @@
-{
-  "replace": false,
-  "values": [
-    "bloodplace:greenwood_pub_biome"
-  ]
-}
+{"replace":false,"values":["bloodplace:showcase_biome"]}

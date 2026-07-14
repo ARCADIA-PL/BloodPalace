@@ -99,6 +99,7 @@ dependencies {
     }
 
     implementation fg.deobf("curse.maven:when-dungeons-arise-442508:4983862")
+    implementation fg.deobf("curse.maven:chunky-pregenerator-forge-485681:5320028")
 }
 
 tasks.named('processResources', ProcessResources).configure {

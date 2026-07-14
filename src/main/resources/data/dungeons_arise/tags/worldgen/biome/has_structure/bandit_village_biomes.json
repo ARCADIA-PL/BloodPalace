@@ -1,6 +1,1 @@
-{
-  "replace": false,
-  "values": [
-    "bloodplace:bandit_village_biome"
-  ]
-}
+{"replace":false,"values":["bloodplace:showcase_biome"]}

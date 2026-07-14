@@ -1,6 +1,1 @@
-{
-  "replace": false,
-  "values": [
-    "bloodplace:scorched_mines_biome"
-  ]
-}
+{"replace":false,"values":["bloodplace:showcase_biome"]}

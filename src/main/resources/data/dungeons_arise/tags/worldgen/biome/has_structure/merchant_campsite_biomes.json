@@ -1,6 +1,1 @@
-{
-  "replace": false,
-  "values": [
-    "bloodplace:merchant_campsite_biome"
-  ]
-}
+{"replace":false,"values":["bloodplace:showcase_biome"]}
