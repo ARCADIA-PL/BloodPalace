@@ -1,5 +1,6 @@
 package org.com.bloodplace.handler;
 
+import com.mojang.logging.LogUtils;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -9,29 +10,46 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.border.WorldBorder;
+import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
+import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 
 public class ShowcaseHandler {
 
+    private static final Logger LOGGER = LogUtils.getLogger();
     private static final String DIM_DIR = "dimensions/bloodplace";
     private static final int BORDER_SIZE = 500;
+    private static final int PRELOAD_CHUNKS = 24; // radius in chunks
+
+    private static final Set<String> HEAVY_STRUCTURES = new LinkedHashSet<>(List.of(
+        "keep_kayra", "mechanical_nest"
+    ));
 
     @SubscribeEvent
     public void onServerAboutToStart(ServerAboutToStartEvent event) {
-        deleteAllShowcaseDirs(event.getServer());
+        /*deleteAllShowcaseDirs(event.getServer());*/
+    }
+
+    @SubscribeEvent
+    public void onServerStarted(ServerStartedEvent event) {
+        preloadHeavyStructuresSync(event.getServer());
     }
 
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
-        deleteAllShowcaseDirs(event.getServer());
+        /*deleteAllShowcaseDirs(event.getServer());*/
     }
 
     @SubscribeEvent
@@ -70,6 +88,33 @@ public class ShowcaseHandler {
         if (player.isCreative()) return;
         event.setCanceled(true);
     }
+
+    // ═══════════════════════════════════════════
+    //  Sync preload — runs during server startup,
+    //  before any player can join the world.
+    // ═══════════════════════════════════════════
+
+    private void preloadHeavyStructuresSync(MinecraftServer server) {
+        for (String name : HEAVY_STRUCTURES) {
+            ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION,
+                ResourceLocation.fromNamespaceAndPath("bloodplace", name + "_showcase"));
+            ServerLevel level = server.getLevel(key);
+            if (level == null) continue;
+
+            LOGGER.info("BloodPlace: preloading {}", name);
+            int r = PRELOAD_CHUNKS;
+            for (int cx = -r; cx <= r; cx++) {
+                for (int cz = -r; cz <= r; cz++) {
+                    level.getChunk(cx, cz, ChunkStatus.FULL, true);
+                }
+            }
+            LOGGER.info("BloodPlace: {} done", name);
+        }
+    }
+
+    // ═══════════════════════════════════════════
+    //  Helpers
+    // ═══════════════════════════════════════════
 
     private boolean isShowcaseDimension(ResourceLocation dimId) {
         return "bloodplace".equals(dimId.getNamespace())
