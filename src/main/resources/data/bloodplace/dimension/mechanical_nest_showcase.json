@@ -7,11 +7,17 @@
       "lakes": false,
       "features": false,
       "layers": [
-        { "block": "minecraft:barrier", "height": 1 },
-        { "block": "minecraft:air", "height": 255 }
+        {
+          "block": "minecraft:barrier",
+          "height": 1
+        },
+        {
+          "block": "minecraft:air",
+          "height": 255
+        }
       ],
       "structure_overrides": [
-        "dungeons_arise:mechanical_nest"
+        "bloodplace:mechanical_nest_showcase"
       ]
     }
   }

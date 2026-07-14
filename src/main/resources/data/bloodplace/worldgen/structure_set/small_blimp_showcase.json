@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:small_blimp_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 634282671,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

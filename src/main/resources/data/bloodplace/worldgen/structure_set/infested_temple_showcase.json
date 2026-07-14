@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:infested_temple_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1223429706,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

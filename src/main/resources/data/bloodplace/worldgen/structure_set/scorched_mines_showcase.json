@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:scorched_mines_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1671390707,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

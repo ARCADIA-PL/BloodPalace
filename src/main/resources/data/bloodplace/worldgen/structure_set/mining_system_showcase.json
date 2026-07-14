@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:mining_system_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1510792884,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

@@ -7,11 +7,17 @@
       "lakes": false,
       "features": false,
       "layers": [
-        { "block": "minecraft:barrier", "height": 1 },
-        { "block": "minecraft:air", "height": 255 }
+        {
+          "block": "minecraft:barrier",
+          "height": 1
+        },
+        {
+          "block": "minecraft:air",
+          "height": 255
+        }
       ],
       "structure_overrides": [
-        "dungeons_arise:abandoned_temple"
+        "bloodplace:abandoned_temple_showcase"
       ]
     }
   }

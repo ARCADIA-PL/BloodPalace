@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:mushroom_village_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1596635301,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

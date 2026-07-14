@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:illager_corsair_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1716468687,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

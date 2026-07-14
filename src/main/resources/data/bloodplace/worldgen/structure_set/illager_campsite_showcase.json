@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:illager_campsite_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 2028007658,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

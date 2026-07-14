@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:fishing_hut_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 281526847,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

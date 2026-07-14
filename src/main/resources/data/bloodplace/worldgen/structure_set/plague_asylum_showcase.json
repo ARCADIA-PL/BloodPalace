@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:plague_asylum_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 2141343802,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

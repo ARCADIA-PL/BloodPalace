@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:undead_pirate_ship_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 706958388,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

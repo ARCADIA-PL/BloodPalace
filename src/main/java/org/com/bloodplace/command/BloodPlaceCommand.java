@@ -184,7 +184,7 @@ public class BloodPlaceCommand {
 
     private static BlockPos locate(ServerLevel level, String name) {
         ResourceKey<Structure> key = ResourceKey.create(Registries.STRUCTURE,
-            ResourceLocation.fromNamespaceAndPath("dungeons_arise", name));
+            ResourceLocation.fromNamespaceAndPath("bloodplace", name + "_showcase"));
         var reg = level.registryAccess().registryOrThrow(Registries.STRUCTURE);
         var holder = reg.getHolder(key);
         if (holder.isEmpty()) return BlockPos.ZERO;

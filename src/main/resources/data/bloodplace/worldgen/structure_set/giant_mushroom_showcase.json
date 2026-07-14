@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:giant_mushroom_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1867547993,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

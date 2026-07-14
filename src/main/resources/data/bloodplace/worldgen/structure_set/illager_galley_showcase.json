@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:illager_galley_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 992290338,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

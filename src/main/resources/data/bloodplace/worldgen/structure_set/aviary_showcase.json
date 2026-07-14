@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodplace:aviary_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 555686007,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}
