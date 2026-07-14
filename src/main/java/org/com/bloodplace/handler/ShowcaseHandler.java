@@ -22,20 +22,21 @@ import org.slf4j.Logger;
 import java.io.IOException;
 import java.nio.file.*;
 import java.util.Comparator;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public class ShowcaseHandler {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String DIM_DIR = "dimensions/bloodplace";
     private static final int BORDER_SIZE = 500;
-    private static final int PRELOAD_CHUNKS = 24; // radius in chunks
 
-    private static final Set<String> HEAVY_STRUCTURES = new LinkedHashSet<>(List.of(
-        "keep_kayra", "mechanical_nest"
-    ));
+    // Structure → preload chunk radius (max_distance_from_center / 16, rounded up)
+    private static final Map<String, Integer> HEAVY_STRUCTURES = new LinkedHashMap<>();
+    static {
+        HEAVY_STRUCTURES.put("keep_kayra",        24);
+        HEAVY_STRUCTURES.put("mechanical_nest",   24);
+    }
 
     @SubscribeEvent
     public void onServerAboutToStart(ServerAboutToStartEvent event) {
@@ -94,22 +95,33 @@ public class ShowcaseHandler {
     //  before any player can join the world.
     // ═══════════════════════════════════════════
 
+    /**
+     * Preload during server startup — before any player can join.
+     * Uses per-structure radius (= max_distance_from_center / 16) and
+     * ChunkStatus.STRUCTURE_STARTS to skip expensive post-processing.
+     * Chunks persist on disk, so 2nd+ restart is instant.
+     */
     private void preloadHeavyStructuresSync(MinecraftServer server) {
-        for (String name : HEAVY_STRUCTURES) {
+        long start = System.currentTimeMillis();
+
+        for (var entry : HEAVY_STRUCTURES.entrySet()) {
+            String name = entry.getKey();
+            int r = entry.getValue();
             ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION,
                 ResourceLocation.fromNamespaceAndPath("bloodplace", name + "_showcase"));
             ServerLevel level = server.getLevel(key);
             if (level == null) continue;
 
-            LOGGER.info("BloodPlace: preloading {}", name);
-            int r = PRELOAD_CHUNKS;
+            LOGGER.info("BloodPlace: preloading {} ({}×{}chunks)", name, r*2+1, r*2+1);
             for (int cx = -r; cx <= r; cx++) {
                 for (int cz = -r; cz <= r; cz++) {
                     level.getChunk(cx, cz, ChunkStatus.FULL, true);
                 }
             }
-            LOGGER.info("BloodPlace: {} done", name);
         }
+
+        long elapsed = (System.currentTimeMillis() - start) / 1000;
+        LOGGER.info("BloodPlace: {} structures preloaded in {}s", HEAVY_STRUCTURES.size(), elapsed);
     }
 
     // ═══════════════════════════════════════════
