@@ -19,17 +19,15 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.levelgen.structure.Structure;
-import org.com.bloodplace.handler.ShowcaseHandler;
+import org.popcraft.chunky.ChunkyProvider;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 public class BloodPlaceCommand {
 
-    public static final String SHOWCASE_DIM = "bloodplace:showcase";
-    private static final ResourceKey<Level> SHOWCASE_KEY =
-        ResourceKey.create(Registries.DIMENSION,
-            ResourceLocation.fromNamespaceAndPath("bloodplace", "showcase"));
+    private static final String DIM_PREFIX = "bloodplace:";
+    private static final String DIM_SUFFIX = "_showcase";
 
     public static final List<String> STRUCTURES = List.of(
         "abandoned_temple", "aviary", "bandit_towers", "bandit_village", "bathhouse",
@@ -63,7 +61,7 @@ public class BloodPlaceCommand {
         ctx.getSource().sendSuccess(() -> Component.literal(
             "§6===== BloodPlace Showcase =====\n" +
             "§e/bloodplace list §7— §f列出所有可用结构\n" +
-            "§e/bloodplace <名称> §7— §f传送到展示维度的结构\n" +
+            "§e/bloodplace <名称> §7— §f传送到结构展示维度\n" +
             "§e/bloodplace back §7— §f返回主世界"), false);
         return 1;
     }
@@ -98,37 +96,64 @@ public class BloodPlaceCommand {
             return 0;
         }
         ServerPlayer player = source.getPlayerOrException();
+        String dimStr = DIM_PREFIX + structureName + DIM_SUFFIX;
+        ResourceLocation dimId = ResourceLocation.fromNamespaceAndPath("bloodplace",
+            structureName + DIM_SUFFIX);
+        ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, dimId);
 
-        // Ensure showcase dimension
-        ServerLevel showcase = source.getServer().getLevel(SHOWCASE_KEY);
-        if (showcase == null) {
+        // Store origin
+        Level origin = player.level();
+        player.getPersistentData().putString("bp_origin_dim",
+            origin.dimension().location().toString());
+        player.getPersistentData().putDouble("bp_origin_x", player.getX());
+        player.getPersistentData().putDouble("bp_origin_y", player.getY());
+        player.getPersistentData().putDouble("bp_origin_z", player.getZ());
+
+        source.sendSuccess(
+            () -> Component.literal("§7正在预加载 §6" + formatName(structureName) + "§7..."), false);
+
+        // Get the dimension (triggers creation) then preload with Chunky
+        ServerLevel level = source.getServer().getLevel(dimKey);
+        if (level == null) {
             source.sendFailure(Component.literal("§c展示维度不存在"));
             return 0;
         }
 
-        // Store origin
-        Level origin = player.level();
-        if (!SHOWCASE_KEY.equals(origin.dimension())) {
-            player.getPersistentData().putString("bp_origin_dim",
-                origin.dimension().location().toString());
-            player.getPersistentData().putDouble("bp_origin_x", player.getX());
-            player.getPersistentData().putDouble("bp_origin_y", player.getY());
-            player.getPersistentData().putDouble("bp_origin_z", player.getZ());
-        }
+        preloadAndEnter(player, level, dimStr, structureName);
 
-        // Locate structure
-        BlockPos pos = locate(showcase, structureName);
-        if (pos.equals(BlockPos.ZERO)) {
-            source.sendFailure(Component.literal("§c无法定位结构: " + structureName));
-            return 0;
-        }
-
-        player.teleportTo(showcase, pos.getX() + 0.5, pos.getY() + 10, pos.getZ() + 0.5,
-            player.getYRot(), player.getXRot());
-
-        source.sendSuccess(
-            () -> Component.literal("§a已传送到 §6" + formatName(structureName)), false);
         return 1;
+    }
+
+    private static void preloadAndEnter(ServerPlayer player, ServerLevel level,
+            String dimKey, String structureName) {
+        try {
+            var api = ChunkyProvider.get().getApi();
+
+            // Register callback BEFORE starting task
+            api.onGenerationComplete(event -> {
+                if (!dimKey.equals(event.world())) return;
+                player.getServer().tell(
+                    new net.minecraft.server.TickTask(player.getServer().getTickCount(), () ->
+                        doEnter(player, level, structureName)));
+            });
+
+            if (!api.isRunning(dimKey)) {
+                api.startTask(dimKey, "square", 0, 0, 200, 200, "concentric");
+            }
+        } catch (Exception e) {
+            // Chunky not available — enter directly
+            doEnter(player, level, structureName);
+        }
+    }
+
+    private static void doEnter(ServerPlayer player, ServerLevel level, String name) {
+        BlockPos target = locate(level, name);
+        if (target.equals(BlockPos.ZERO)) target = new BlockPos(0, 120, 0);
+        player.teleportTo(level,
+            target.getX() + 0.5, target.getY() + 10, target.getZ() + 0.5,
+            player.getYRot(), player.getXRot());
+        player.sendSystemMessage(
+            Component.literal("§a已传送到 §6" + formatName(name)));
     }
 
     // ── /bloodplace back ──
@@ -141,12 +166,12 @@ public class BloodPlaceCommand {
         String dimStr = player.getPersistentData().getString("bp_origin_dim");
         ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION,
             ResourceLocation.parse(dimStr));
-        ServerLevel targetLevel = ctx.getSource().getServer().getLevel(dimKey);
-        if (targetLevel == null) {
+        ServerLevel target = ctx.getSource().getServer().getLevel(dimKey);
+        if (target == null) {
             ctx.getSource().sendFailure(Component.literal("§c无法找到原始维度"));
             return 0;
         }
-        player.teleportTo(targetLevel,
+        player.teleportTo(target,
             player.getPersistentData().getDouble("bp_origin_x"),
             player.getPersistentData().getDouble("bp_origin_y"),
             player.getPersistentData().getDouble("bp_origin_z"),
@@ -157,7 +182,6 @@ public class BloodPlaceCommand {
         return 1;
     }
 
-    // ── Locate ──
     private static BlockPos locate(ServerLevel level, String name) {
         ResourceKey<Structure> key = ResourceKey.create(Registries.STRUCTURE,
             ResourceLocation.fromNamespaceAndPath("dungeons_arise", name));
@@ -167,7 +191,7 @@ public class BloodPlaceCommand {
         var result = level.getChunkSource().getGenerator()
             .findNearestMapStructure(level,
                 HolderSet.direct(holder.get()),
-                new BlockPos(0, 120, 0), 400, false);
+                new BlockPos(0, 120, 0), 200, false);
         return result != null ? result.getFirst() : BlockPos.ZERO;
     }
 

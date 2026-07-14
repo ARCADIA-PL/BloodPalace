@@ -1,0 +1,18 @@
+{
+  "type": "bloodplace:showcase",
+  "generator": {
+    "type": "minecraft:flat",
+    "settings": {
+      "biome": "bloodplace:illager_galley_biome",
+      "lakes": false,
+      "features": false,
+      "layers": [
+        { "block": "minecraft:barrier", "height": 1 },
+        { "block": "minecraft:air", "height": 255 }
+      ],
+      "structure_overrides": [
+        "dungeons_arise:illager_galley"
+      ]
+    }
+  }
+}

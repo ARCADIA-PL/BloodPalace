@@ -1,9 +1,13 @@
 package org.com.bloodplace.handler;
 
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.border.WorldBorder;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.BlockEvent;
@@ -17,26 +21,38 @@ import java.util.Comparator;
 
 public class ShowcaseHandler {
 
-    private static final String SHOWCASE_DIM_PATH = "bloodplace/showcase";
-    private static final int BORDER_SIZE = 800;
+    private static final String DIM_DIR = "dimensions/bloodplace";
+    private static final int BORDER_SIZE = 500;
 
     @SubscribeEvent
     public void onServerAboutToStart(ServerAboutToStartEvent event) {
-        deleteShowcaseDir(event.getServer());
+        deleteAllShowcaseDirs(event.getServer());
     }
 
     @SubscribeEvent
     public void onServerStopping(ServerStoppingEvent event) {
-        deleteShowcaseDir(event.getServer());
+        deleteAllShowcaseDirs(event.getServer());
     }
 
     @SubscribeEvent
     public void onPlayerChangeDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
-        if (isShowcaseDimension(player.level().dimension().location())) {
+
+        ResourceLocation toDim = event.getTo().location();
+        ResourceLocation fromDim = event.getFrom().location();
+
+        if (isShowcaseDimension(toDim)) {
             WorldBorder border = player.serverLevel().getWorldBorder();
             border.setCenter(0, 0);
             border.setSize(BORDER_SIZE);
+        }
+
+        if (isShowcaseDimension(fromDim)) {
+            ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, fromDim);
+            ServerLevel left = player.getServer().getLevel(key);
+            if (left != null && left.players().isEmpty()) {
+                deleteDimensionDir(player.getServer(), fromDim.getPath());
+            }
         }
     }
 
@@ -57,13 +73,25 @@ public class ShowcaseHandler {
 
     private boolean isShowcaseDimension(ResourceLocation dimId) {
         return "bloodplace".equals(dimId.getNamespace())
-            && "showcase".equals(dimId.getPath());
+            && dimId.getPath().endsWith("_showcase");
     }
 
-    private static void deleteShowcaseDir(MinecraftServer server) {
-        Path dimDir = server.getServerDirectory().toPath()
-            .resolve("dimensions").resolve(SHOWCASE_DIM_PATH);
-        if (Files.exists(dimDir)) deleteRecursive(dimDir);
+    static void deleteAllShowcaseDirs(MinecraftServer server) {
+        Path dir = server.getServerDirectory().toPath().resolve(DIM_DIR);
+        if (!Files.exists(dir)) return;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
+            for (Path p : stream) {
+                if (Files.isDirectory(p) && p.getFileName().toString().endsWith("_showcase")) {
+                    deleteRecursive(p);
+                }
+            }
+        } catch (IOException ignored) {}
+    }
+
+    static void deleteDimensionDir(MinecraftServer server, String dimName) {
+        Path dir = server.getServerDirectory().toPath()
+            .resolve(DIM_DIR).resolve(dimName);
+        if (Files.exists(dir)) deleteRecursive(dir);
     }
 
     private static void deleteRecursive(Path dir) {
