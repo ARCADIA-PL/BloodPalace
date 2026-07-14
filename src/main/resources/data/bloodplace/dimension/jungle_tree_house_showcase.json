@@ -1,0 +1,20 @@
+{
+  "type": "bloodplace:showcase",
+  "generator": {
+    "type": "minecraft:flat",
+    "settings": {
+      "biome": "bloodplace:jungle_tree_house_biome",
+      "lakes": false,
+      "features": false,
+      "layers": [
+        { "block": "minecraft:bedrock", "height": 1 },
+        { "block": "minecraft:stone", "height": 120 },
+        { "block": "minecraft:dirt", "height": 5 },
+        { "block": "minecraft:grass_block", "height": 1 }
+      ],
+      "structure_overrides": [
+        "dungeons_arise:jungle_tree_house"
+      ]
+    }
+  }
+}
