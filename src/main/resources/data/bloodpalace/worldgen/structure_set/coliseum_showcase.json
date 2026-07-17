@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:coliseum_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 97789499,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

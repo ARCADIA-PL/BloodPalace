@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:abandoned_temple_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 684699820,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

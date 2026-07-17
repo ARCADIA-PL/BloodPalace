@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:greenwood_pub_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 591792837,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

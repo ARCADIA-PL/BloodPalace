@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:illager_fort_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1941220420,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

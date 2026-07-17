@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:mushroom_mines_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1281083691,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

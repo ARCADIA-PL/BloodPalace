@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:ceryneian_hind_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 637481171,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

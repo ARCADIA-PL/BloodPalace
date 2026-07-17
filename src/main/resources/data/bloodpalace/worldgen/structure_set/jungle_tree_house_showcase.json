@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:jungle_tree_house_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1242032535,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

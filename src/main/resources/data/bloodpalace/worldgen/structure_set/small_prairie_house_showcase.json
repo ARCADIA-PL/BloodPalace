@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:small_prairie_house_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 183053336,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

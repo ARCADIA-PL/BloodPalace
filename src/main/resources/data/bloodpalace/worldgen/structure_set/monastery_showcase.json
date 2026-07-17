@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:monastery_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1838596847,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

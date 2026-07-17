@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:typhon_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1494856813,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

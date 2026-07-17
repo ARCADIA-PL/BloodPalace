@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:keep_kayra_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 2073673780,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

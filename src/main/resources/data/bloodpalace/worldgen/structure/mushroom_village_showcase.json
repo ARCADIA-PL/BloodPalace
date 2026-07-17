@@ -1,0 +1,14 @@
+{
+  "type": "minecraft:jigsaw",
+  "start_pool": "dungeons_arise:fungi/mushroom_village/mushroom_village_start",
+  "size": 6,
+  "biomes": "#bloodpalace:has_structure/mushroom_village_showcase",
+  "adapt_noise": false,
+  "spawn_overrides": {},
+  "max_distance_from_center": 114,
+  "step": "surface_structures",
+  "start_height": {
+    "absolute": 50
+  },
+  "use_expansion_hack": false
+}

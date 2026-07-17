@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:bandit_towers_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 1382516988,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}

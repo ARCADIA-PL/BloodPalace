@@ -1,0 +1,14 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:shiraz_palace_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "salt": 679077524,
+    "spacing": 30,
+    "separation": 28,
+    "type": "minecraft:random_spread"
+  }
+}
