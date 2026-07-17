@@ -39,6 +39,7 @@ public class ShowcaseHandler {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final String DIM_DIR = "dimensions/bloodpalace";
+    private static final String SKIP_SPAWN_EVENT_DIM = "bp_skip_spawn_event_dim";
     private static final int BORDER_SIZE = 500;
 
     // Structure → preload chunk radius (max_distance_from_center / 16, rounded up)
@@ -74,7 +75,11 @@ public class ShowcaseHandler {
             WorldBorder border = player.serverLevel().getWorldBorder();
             border.setCenter(0, 0);
             border.setSize(BORDER_SIZE);
-            teleportToConfiguredSpawn(player, toDim);
+            if (toDim.toString().equals(player.getPersistentData().getString(SKIP_SPAWN_EVENT_DIM))) {
+                player.getPersistentData().remove(SKIP_SPAWN_EVENT_DIM);
+            } else {
+                teleportToConfiguredSpawn(player, toDim);
+            }
             clearLoadedShowcaseMobs(player.serverLevel());
             clearLoadedShowcaseBlocks(player.serverLevel());
         }

@@ -22,9 +22,13 @@ import org.com.bloodpalace.util.ShowcaseStructures;
 import org.popcraft.chunky.ChunkyProvider;
 
 import java.io.IOException;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 
 public class BloodPalaceCommand {
+
+    private static final String PENDING_ENTER_TOKEN = "bp_pending_enter_token";
+    private static final String SKIP_SPAWN_EVENT_DIM = "bp_skip_spawn_event_dim";
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(
@@ -176,13 +180,15 @@ public class BloodPalaceCommand {
             String dimKey, String structureName) {
         try {
             var api = ChunkyProvider.get().getApi();
+            String token = UUID.randomUUID().toString();
+            player.getPersistentData().putString(PENDING_ENTER_TOKEN, token);
 
             // Register callback BEFORE starting task
             api.onGenerationComplete(event -> {
                 if (!dimKey.equals(event.world())) return;
                 player.getServer().tell(
                     new net.minecraft.server.TickTask(player.getServer().getTickCount(), () ->
-                        doEnter(player, level, structureName)));
+                        doEnterIfPending(player, level, structureName, token)));
             });
 
             if (!api.isRunning(dimKey)) {
@@ -190,12 +196,20 @@ public class BloodPalaceCommand {
             }
         } catch (Exception e) {
             // Chunky not available — enter directly
+            player.getPersistentData().remove(PENDING_ENTER_TOKEN);
             doEnter(player, level, structureName);
         }
     }
 
+    private static void doEnterIfPending(ServerPlayer player, ServerLevel level, String name, String token) {
+        if (!token.equals(player.getPersistentData().getString(PENDING_ENTER_TOKEN))) return;
+        player.getPersistentData().remove(PENDING_ENTER_TOKEN);
+        doEnter(player, level, name);
+    }
+
     private static void doEnter(ServerPlayer player, ServerLevel level, String name) {
         String dimensionId = ShowcaseDimensions.dimensionIdForStructure(name);
+        player.getPersistentData().putString(SKIP_SPAWN_EVENT_DIM, dimensionId);
         var configuredSpawn = SpawnConfig.get(dimensionId);
         if (configuredSpawn.isPresent()) {
             SpawnConfig.SpawnPoint spawn = configuredSpawn.get();
