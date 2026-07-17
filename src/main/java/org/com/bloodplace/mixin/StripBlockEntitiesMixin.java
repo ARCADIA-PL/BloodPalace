@@ -2,10 +2,10 @@ package org.com.bloodplace.mixin;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ServerLevelAccessor;
+import net.minecraft.world.level.block.AbstractSkullBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
@@ -15,8 +15,8 @@ import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
 import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
+import org.com.bloodplace.util.ShowcaseDimensions;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
@@ -32,7 +32,7 @@ public class StripBlockEntitiesMixin {
 
         if (!cir.getReturnValue()) return;
         if (!(level instanceof ServerLevel sl)) return;
-        if (!bloodplace$isShowcaseDimension(sl.dimension().location())) return;
+        if (!ShowcaseDimensions.isShowcaseDimension(sl.dimension().location())) return;
 
         StructureTemplate self = (StructureTemplate) (Object) this;
         Vec3i size = self.getSize(settings.getRotation());
@@ -44,7 +44,8 @@ public class StripBlockEntitiesMixin {
                 for (int z = 0; z < size.getZ(); z++) {
                     scan.set(pos.getX() + x, pos.getY() + y, pos.getZ() + z);
                     BlockEntity be = sl.getBlockEntity(scan);
-                    if (be instanceof SkullBlockEntity) {
+                    if (be instanceof SkullBlockEntity
+                            && !(sl.getBlockState(scan).getBlock() instanceof AbstractSkullBlock)) {
                         skullsToRemove.add(scan.immutable());
                     }
                     if (be instanceof RandomizableContainerBlockEntity container) {
@@ -56,11 +57,5 @@ public class StripBlockEntitiesMixin {
         for (BlockPos p : skullsToRemove) {
             sl.setBlock(p, Blocks.AIR.defaultBlockState(), 3);
         }
-    }
-
-    @Unique
-    private static boolean bloodplace$isShowcaseDimension(ResourceLocation dimId) {
-        return "bloodplace".equals(dimId.getNamespace())
-            && dimId.getPath().endsWith("_showcase");
     }
 }

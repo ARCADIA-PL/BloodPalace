@@ -5,6 +5,7 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -17,6 +18,8 @@ import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import org.com.bloodplace.config.SpawnConfig;
+import org.com.bloodplace.util.ShowcaseDimensions;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -60,13 +63,14 @@ public class ShowcaseHandler {
         ResourceLocation toDim = event.getTo().location();
         ResourceLocation fromDim = event.getFrom().location();
 
-        if (isShowcaseDimension(toDim)) {
+        if (ShowcaseDimensions.isShowcaseDimension(toDim)) {
             WorldBorder border = player.serverLevel().getWorldBorder();
             border.setCenter(0, 0);
             border.setSize(BORDER_SIZE);
+            teleportToConfiguredSpawn(player, toDim);
         }
 
-        if (isShowcaseDimension(fromDim)) {
+        if (ShowcaseDimensions.isShowcaseDimension(fromDim)) {
             ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, fromDim);
             ServerLevel left = player.getServer().getLevel(key);
             if (left != null && left.players().isEmpty()) {
@@ -77,7 +81,7 @@ public class ShowcaseHandler {
 
     @SubscribeEvent
     public void onBlockBreak(BlockEvent.BreakEvent event) {
-        if (!isShowcaseDimension(event.getPlayer().level().dimension().location())) return;
+        if (!ShowcaseDimensions.isShowcaseDimension(event.getPlayer().level().dimension().location())) return;
         if (event.getPlayer().isCreative()) return;
         event.setCanceled(true);
     }
@@ -85,7 +89,7 @@ public class ShowcaseHandler {
     @SubscribeEvent
     public void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
         if (!(event.getEntity() instanceof Player player)) return;
-        if (!isShowcaseDimension(player.level().dimension().location())) return;
+        if (!ShowcaseDimensions.isShowcaseDimension(player.level().dimension().location())) return;
         if (player.isCreative()) return;
         event.setCanceled(true);
     }
@@ -107,8 +111,7 @@ public class ShowcaseHandler {
         for (var entry : HEAVY_STRUCTURES.entrySet()) {
             String name = entry.getKey();
             int r = entry.getValue();
-            ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION,
-                ResourceLocation.fromNamespaceAndPath("bloodplace", name + "_showcase"));
+            ResourceKey<Level> key = ShowcaseDimensions.dimensionKeyForStructure(name);
             ServerLevel level = server.getLevel(key);
             if (level == null) continue;
 
@@ -128,9 +131,14 @@ public class ShowcaseHandler {
     //  Helpers
     // ═══════════════════════════════════════════
 
-    private boolean isShowcaseDimension(ResourceLocation dimId) {
-        return "bloodplace".equals(dimId.getNamespace())
-            && dimId.getPath().endsWith("_showcase");
+    private void teleportToConfiguredSpawn(ServerPlayer player, ResourceLocation dimensionId) {
+        SpawnConfig.get(dimensionId.toString()).ifPresent(spawnPoint ->
+            player.getServer().tell(new TickTask(player.getServer().getTickCount(), () -> {
+                if (!dimensionId.equals(player.level().dimension().location())) return;
+                player.teleportTo(player.serverLevel(),
+                    spawnPoint.x, spawnPoint.y, spawnPoint.z,
+                    spawnPoint.yaw, spawnPoint.pitch);
+            })));
     }
 
     static void deleteAllShowcaseDirs(MinecraftServer server) {

@@ -6,6 +6,7 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import org.com.bloodplace.command.BloodPlaceCommand;
+import org.com.bloodplace.config.SpawnConfig;
 import org.com.bloodplace.handler.ShowcaseHandler;
 import org.slf4j.Logger;
 
@@ -17,6 +18,7 @@ public class BloodPlace {
 
     public BloodPlace() {
         LOGGER.info("BloodPlace mod initialized");
+        SpawnConfig.init();
         MinecraftForge.EVENT_BUS.register(this);
         MinecraftForge.EVENT_BUS.register(new ShowcaseHandler());
     }
