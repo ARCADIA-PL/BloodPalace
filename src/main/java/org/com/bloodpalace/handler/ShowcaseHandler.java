@@ -28,6 +28,7 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.com.bloodpalace.util.ShowcaseBlockCleaner;
 import org.com.bloodpalace.util.ShowcaseDimensions;
 import org.com.bloodpalace.util.ShowcaseTeleports;
+import org.com.bloodpalace.util.RoomCoreManager;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -83,6 +84,7 @@ public class ShowcaseHandler {
             }
             clearLoadedShowcaseMobs(player.serverLevel());
             clearLoadedShowcaseBlocks(player.serverLevel());
+            RoomCoreManager.ensureForDimension(player.serverLevel());
         }
 
         if (ShowcaseDimensions.isShowcaseDimension(fromDim)) {
