@@ -195,10 +195,19 @@ public class BloodPalaceCommand {
     }
 
     private static void doEnter(ServerPlayer player, ServerLevel level, String name) {
-        BlockPos target = ShowcaseStructures.findEntryPosition(level, name);
-        player.teleportTo(level,
-            target.getX() + 0.5, target.getY() + 10, target.getZ() + 0.5,
-            player.getYRot(), player.getXRot());
+        String dimensionId = ShowcaseDimensions.dimensionIdForStructure(name);
+        var configuredSpawn = SpawnConfig.get(dimensionId);
+        if (configuredSpawn.isPresent()) {
+            SpawnConfig.SpawnPoint spawn = configuredSpawn.get();
+            player.teleportTo(level,
+                spawn.x, spawn.y, spawn.z,
+                spawn.yaw, spawn.pitch);
+        } else {
+            BlockPos target = ShowcaseStructures.findEntryPosition(level, name);
+            player.teleportTo(level,
+                target.getX() + 0.5, target.getY() + 10, target.getZ() + 0.5,
+                player.getYRot(), player.getXRot());
+        }
         player.sendSystemMessage(
             Component.literal("§a已传送到 §6" + ShowcaseDimensions.formatName(name)));
     }

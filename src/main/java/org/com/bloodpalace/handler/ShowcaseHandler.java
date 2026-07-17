@@ -12,8 +12,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.chunk.LevelChunk;
@@ -27,6 +25,7 @@ import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.com.bloodpalace.config.SpawnConfig;
+import org.com.bloodpalace.util.ShowcaseBlockCleaner;
 import org.com.bloodpalace.util.ShowcaseDimensions;
 import org.slf4j.Logger;
 
@@ -183,37 +182,14 @@ public class ShowcaseHandler {
         for (int cx = -radius; cx <= radius; cx++) {
             for (int cz = -radius; cz <= radius; cz++) {
                 if (level.hasChunk(cx, cz)) {
-                    clearChunkShowcaseBlocks(level, level.getChunk(cx, cz));
+                    ShowcaseBlockCleaner.cleanChunk(level, level.getChunk(cx, cz));
                 }
             }
         }
     }
 
     private void clearChunkShowcaseBlocks(ServerLevel level, LevelChunk chunk) {
-        int minY = level.getMinBuildHeight();
-        int maxY = level.getMaxBuildHeight();
-        for (var entry : chunk.getBlockEntities().entrySet()) {
-            BlockPos pos = entry.getKey();
-            if (pos.getY() < minY || pos.getY() >= maxY) continue;
-            if (entry.getValue() instanceof SpawnerBlockEntity
-                    || level.getBlockState(pos).is(Blocks.SPAWNER)) {
-                level.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
-            }
-        }
-
-        int minX = chunk.getPos().getMinBlockX();
-        int minZ = chunk.getPos().getMinBlockZ();
-        BlockPos.MutableBlockPos scan = new BlockPos.MutableBlockPos();
-        for (int x = minX; x < minX + 16; x++) {
-            for (int z = minZ; z < minZ + 16; z++) {
-                for (int y = minY; y < maxY; y++) {
-                    scan.set(x, y, z);
-                    if (level.getBlockState(scan).is(Blocks.COBWEB)) {
-                        level.setBlock(scan, Blocks.AIR.defaultBlockState(), 3);
-                    }
-                }
-            }
-        }
+        ShowcaseBlockCleaner.cleanChunk(level, chunk);
     }
 
     static void deleteAllShowcaseDirs(MinecraftServer server) {

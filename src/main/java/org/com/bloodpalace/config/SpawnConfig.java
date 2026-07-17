@@ -13,9 +13,11 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 public final class SpawnConfig {
 
@@ -23,8 +25,10 @@ public final class SpawnConfig {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path CONFIG_PATH = FMLPaths.CONFIGDIR.get().resolve("bloodpalace-spawns.json");
     private static final Map<String, SpawnPoint> SPAWNS = new LinkedHashMap<>();
+    private static final Map<String, Set<String>> CATEGORIES = new LinkedHashMap<>();
 
     private static boolean loaded;
+    private static FileTime lastLoadedModified;
 
     private SpawnConfig() {
     }
@@ -49,7 +53,7 @@ public final class SpawnConfig {
     }
 
     private static void ensureLoaded() {
-        if (loaded) return;
+        if (loaded && !hasChangedOnDisk()) return;
         loaded = true;
 
         if (!Files.exists(CONFIG_PATH)) {
@@ -67,6 +71,11 @@ public final class SpawnConfig {
                 SPAWNS.clear();
                 SPAWNS.putAll(data.spawns);
             }
+            CATEGORIES.clear();
+            if (data != null && data.categories != null) {
+                CATEGORIES.putAll(data.categories);
+            }
+            lastLoadedModified = Files.getLastModifiedTime(CONFIG_PATH);
         } catch (IOException | JsonParseException e) {
             LOGGER.error("BloodPalace: failed to load spawn config {}", CONFIG_PATH, e);
         }
@@ -77,14 +86,28 @@ public final class SpawnConfig {
 
         ConfigData data = new ConfigData();
         data.spawns.putAll(SPAWNS);
+        data.categories.putAll(CATEGORIES);
 
         try (Writer writer = Files.newBufferedWriter(CONFIG_PATH, StandardCharsets.UTF_8)) {
             GSON.toJson(data, writer);
+        }
+        lastLoadedModified = Files.getLastModifiedTime(CONFIG_PATH);
+    }
+
+    private static boolean hasChangedOnDisk() {
+        if (!Files.exists(CONFIG_PATH)) return false;
+        try {
+            FileTime modified = Files.getLastModifiedTime(CONFIG_PATH);
+            return lastLoadedModified == null || !modified.equals(lastLoadedModified);
+        } catch (IOException e) {
+            LOGGER.error("BloodPalace: failed to stat spawn config {}", CONFIG_PATH, e);
+            return false;
         }
     }
 
     private static final class ConfigData {
         private Map<String, SpawnPoint> spawns = new LinkedHashMap<>();
+        private Map<String, Set<String>> categories = new LinkedHashMap<>();
     }
 
     public static final class SpawnPoint {
