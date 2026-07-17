@@ -9,38 +9,47 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.storage.IOWorker;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.level.ChunkEvent;
-import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
-import net.minecraftforge.event.server.ServerStoppingEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
-import org.com.bloodpalace.config.SpawnConfig;
 import org.com.bloodpalace.util.ShowcaseBlockCleaner;
 import org.com.bloodpalace.util.ShowcaseDimensions;
+import org.com.bloodpalace.util.ShowcaseTeleports;
 import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.nio.file.*;
-import java.util.Comparator;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class ShowcaseHandler {
 
     private static final Logger LOGGER = LogUtils.getLogger();
-    private static final String DIM_DIR = "dimensions/bloodpalace";
-    private static final String SKIP_SPAWN_EVENT_DIM = "bp_skip_spawn_event_dim";
     private static final int BORDER_SIZE = 500;
+    private static final int RESET_DELAY_TICKS = 200;
+
+    private static final Map<ResourceLocation, Boolean> RESET_STARTED = new HashMap<>();
+    private static final Map<ResourceLocation, Integer> RESET_COUNTDOWN = new HashMap<>();
+    private static final Set<ResourceLocation> RESET_QUEUE = new HashSet<>();
 
     // Structure → preload chunk radius (max_distance_from_center / 16, rounded up)
     private static final Map<String, Integer> HEAVY_STRUCTURES = new LinkedHashMap<>();
@@ -50,18 +59,8 @@ public class ShowcaseHandler {
     }
 
     @SubscribeEvent
-    public void onServerAboutToStart(ServerAboutToStartEvent event) {
-        /*deleteAllShowcaseDirs(event.getServer());*/
-    }
-
-    @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
         /*preloadHeavyStructuresSync(event.getServer());*/
-    }
-
-    @SubscribeEvent
-    public void onServerStopping(ServerStoppingEvent event) {
-        /*deleteAllShowcaseDirs(event.getServer());*/
     }
 
     @SubscribeEvent
@@ -72,25 +71,29 @@ public class ShowcaseHandler {
         ResourceLocation fromDim = event.getFrom().location();
 
         if (ShowcaseDimensions.isShowcaseDimension(toDim)) {
+            RESET_STARTED.put(toDim, false);
+            RESET_COUNTDOWN.remove(toDim);
+            RESET_QUEUE.remove(toDim);
+
             WorldBorder border = player.serverLevel().getWorldBorder();
             border.setCenter(0, 0);
             border.setSize(BORDER_SIZE);
-            if (toDim.toString().equals(player.getPersistentData().getString(SKIP_SPAWN_EVENT_DIM))) {
-                player.getPersistentData().remove(SKIP_SPAWN_EVENT_DIM);
-            } else {
-                teleportToConfiguredSpawn(player, toDim);
+            if (!ShowcaseTeleports.consumeSpawnEventSkip(player, toDim)) {
+                ShowcaseTeleports.teleportToConfiguredSpawn(player, toDim);
             }
             clearLoadedShowcaseMobs(player.serverLevel());
             clearLoadedShowcaseBlocks(player.serverLevel());
         }
 
         if (ShowcaseDimensions.isShowcaseDimension(fromDim)) {
-            ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, fromDim);
-            ServerLevel left = player.getServer().getLevel(key);
-            if (left != null && left.players().isEmpty()) {
-                deleteDimensionDir(player.getServer(), fromDim.getPath());
-            }
+            scheduleEmptyShowcaseReset(player.getServer(), fromDim);
         }
+    }
+
+    @SubscribeEvent
+    public void onServerTick(TickEvent.ServerTickEvent event) {
+        if (event.phase == TickEvent.Phase.END) return;
+        tickQueuedShowcaseResets(event.getServer());
     }
 
     @SubscribeEvent
@@ -163,16 +166,6 @@ public class ShowcaseHandler {
     //  Helpers
     // ═══════════════════════════════════════════
 
-    private void teleportToConfiguredSpawn(ServerPlayer player, ResourceLocation dimensionId) {
-        SpawnConfig.get(dimensionId.toString()).ifPresent(spawnPoint ->
-            player.getServer().tell(new TickTask(player.getServer().getTickCount(), () -> {
-                if (!dimensionId.equals(player.level().dimension().location())) return;
-                player.teleportTo(player.serverLevel(),
-                    spawnPoint.x, spawnPoint.y, spawnPoint.z,
-                    spawnPoint.yaw, spawnPoint.pitch);
-            })));
-    }
-
     private void clearLoadedShowcaseMobs(ServerLevel level) {
         AABB bounds = new AABB(
             -BORDER_SIZE, level.getMinBuildHeight(), -BORDER_SIZE,
@@ -197,28 +190,107 @@ public class ShowcaseHandler {
         ShowcaseBlockCleaner.cleanChunk(level, chunk);
     }
 
-    static void deleteAllShowcaseDirs(MinecraftServer server) {
-        Path dir = server.getServerDirectory().toPath().resolve(DIM_DIR);
-        if (!Files.exists(dir)) return;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
-            for (Path p : stream) {
-                if (Files.isDirectory(p) && p.getFileName().toString().endsWith("_showcase")) {
-                    deleteRecursive(p);
-                }
-            }
-        } catch (IOException ignored) {}
+    private void tickQueuedShowcaseResets(MinecraftServer server) {
+        for (ResourceLocation dimensionId : List.copyOf(RESET_QUEUE)) {
+            tickShowcaseReset(server, dimensionId);
+        }
     }
 
-    static void deleteDimensionDir(MinecraftServer server, String dimName) {
-        Path dir = server.getServerDirectory().toPath()
-            .resolve(DIM_DIR).resolve(dimName);
-        if (Files.exists(dir)) deleteRecursive(dir);
+    private void scheduleEmptyShowcaseReset(MinecraftServer server, ResourceLocation dimensionId) {
+        if (!ShowcaseDimensions.isShowcaseDimension(dimensionId)) return;
+        RESET_QUEUE.add(dimensionId);
+        tickShowcaseReset(server, dimensionId);
     }
 
-    private static void deleteRecursive(Path dir) {
+    private void tickShowcaseReset(MinecraftServer server, ResourceLocation dimensionId) {
+        if (!ShowcaseDimensions.isShowcaseDimension(dimensionId)) return;
+
+        ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, dimensionId);
+        ServerLevel level = server.getLevel(key);
+        if (level == null) return;
+
+        if (!level.players().isEmpty()) {
+            RESET_STARTED.put(dimensionId, false);
+            RESET_COUNTDOWN.remove(dimensionId);
+            RESET_QUEUE.remove(dimensionId);
+            return;
+        }
+
+        if (!RESET_STARTED.getOrDefault(dimensionId, false)) {
+            beginReset(level, dimensionId);
+        }
+
+        int current = RESET_COUNTDOWN.getOrDefault(dimensionId, 0);
+        if (current <= 0) return;
+        RESET_COUNTDOWN.put(dimensionId, current - 1);
+        if (current == 1) {
+            deleteRegionCaches(level, dimensionId);
+            RESET_COUNTDOWN.remove(dimensionId);
+            RESET_QUEUE.remove(dimensionId);
+        }
+    }
+
+    private void beginReset(ServerLevel level, ResourceLocation dimensionId) {
         try {
-            Files.walk(dir).sorted(Comparator.reverseOrder())
-                .forEach(p -> { try { Files.delete(p); } catch (IOException ignored) {} });
-        } catch (IOException ignored) {}
+            LOGGER.info("BloodPalace: no players in {}, resetting after {} ticks",
+                dimensionId, RESET_DELAY_TICKS);
+
+            IOWorker ioWorker = (IOWorker) level.getChunkSource().chunkScanner();
+            level.noSave = false;
+            level.save(null, true, true);
+            ioWorker.storage.regionCache.clear();
+
+            List<Entity> entities = new ArrayList<>();
+            level.getAllEntities().forEach(entities::add);
+            for (Entity entity : entities) {
+                entity.discard();
+            }
+
+            RESET_STARTED.put(dimensionId, true);
+            RESET_COUNTDOWN.put(dimensionId, RESET_DELAY_TICKS);
+        } catch (Exception e) {
+            LOGGER.error("BloodPalace: failed to begin reset for {}", dimensionId, e);
+            RESET_STARTED.put(dimensionId, true);
+        }
     }
+
+    private void deleteRegionCaches(ServerLevel level, ResourceLocation dimensionId) {
+        try {
+            IOWorker ioWorker = (IOWorker) level.getChunkSource().chunkScanner();
+            Path regionFolder = ioWorker.storage.folder;
+            if (!Files.exists(regionFolder)) {
+                LOGGER.info("BloodPalace: no region files in {}, skipped reset delete", dimensionId);
+                return;
+            }
+
+            ioWorker.storage.regionCache.clear();
+            deleteFiles(regionFolder, dimensionId);
+            deleteFiles(regionFolder.getParent().resolve("entities"), dimensionId);
+            deleteFiles(regionFolder.getParent().resolve("poi"), dimensionId);
+        } catch (IOException e) {
+            LOGGER.error("BloodPalace: failed to reset dimension {}", dimensionId, e);
+        }
+    }
+
+    private void deleteFiles(Path folder, ResourceLocation dimensionId) throws IOException {
+        if (!Files.exists(folder)) return;
+        Files.walkFileTree(folder, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                if (Files.deleteIfExists(file)) {
+                    LOGGER.info("BloodPalace: {} cache deleted -> {}", dimensionId, file);
+                }
+                return FileVisitResult.CONTINUE;
+            }
+        });
+    }
+
+    public static boolean isResetting(ResourceLocation dimensionId) {
+        return RESET_COUNTDOWN.getOrDefault(dimensionId, 0) > 0;
+    }
+
+    public static int resetTicksRemaining(ResourceLocation dimensionId) {
+        return RESET_COUNTDOWN.getOrDefault(dimensionId, 0);
+    }
+
 }

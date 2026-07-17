@@ -4,12 +4,15 @@ import com.mojang.logging.LogUtils;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
+import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
 import org.com.bloodpalace.command.BloodPalaceCommand;
 import org.com.bloodpalace.config.SpawnConfig;
 import org.com.bloodpalace.handler.ShowcaseHandler;
+import org.com.bloodpalace.worldgen.placement.BloodPalacePlacementTypes;
 import org.slf4j.Logger;
 
+@SuppressWarnings("removal")
 @Mod(BloodPalace.MODID)
 public class BloodPalace {
 
@@ -18,6 +21,8 @@ public class BloodPalace {
 
     public BloodPalace() {
         LOGGER.info("BloodPalace mod initialized");
+        BloodPalacePlacementTypes.STRUCTURE_PLACEMENT_TYPES.register(
+            FMLJavaModLoadingContext.get().getModEventBus());
         SpawnConfig.init();
         MinecraftForge.EVENT_BUS.register(this);
         MinecraftForge.EVENT_BUS.register(new ShowcaseHandler());

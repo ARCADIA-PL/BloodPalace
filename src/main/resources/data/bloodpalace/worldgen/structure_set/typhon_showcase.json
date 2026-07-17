@@ -6,9 +6,6 @@
     }
   ],
   "placement": {
-    "salt": 1494856813,
-    "spacing": 30,
-    "separation": 28,
-    "type": "minecraft:random_spread"
+    "type": "bloodpalace:spawn_pos_placement"
   }
 }

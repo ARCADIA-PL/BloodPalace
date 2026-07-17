@@ -1,0 +1,210 @@
+package org.com.bloodpalace.util;
+
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.TickTask;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
+import org.com.bloodpalace.config.SpawnConfig;
+import org.com.bloodpalace.handler.ShowcaseHandler;
+import org.popcraft.chunky.ChunkyProvider;
+
+import java.util.Optional;
+import java.util.UUID;
+
+public final class ShowcaseTeleports {
+
+    private static final String PENDING_ENTER_TOKEN = "bp_pending_enter_token";
+    private static final String SKIP_SPAWN_EVENT_DIM = "bp_skip_spawn_event_dim";
+    private static final String ORIGIN_DIM = "bp_origin_dim";
+    private static final String ORIGIN_X = "bp_origin_x";
+    private static final String ORIGIN_Y = "bp_origin_y";
+    private static final String ORIGIN_Z = "bp_origin_z";
+    private static final String ORIGIN_YAW = "bp_origin_yaw";
+    private static final String ORIGIN_PITCH = "bp_origin_pitch";
+
+    private ShowcaseTeleports() {
+    }
+
+    public static int enter(CommandSourceStack source, String structureName) {
+        if (!ShowcaseDimensions.isKnownStructure(structureName)) {
+            source.sendFailure(Component.literal("\u00a7cUnknown structure: " + structureName));
+            return 0;
+        }
+
+        ServerPlayer player;
+        try {
+            player = source.getPlayerOrException();
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("\u00a7cThis command requires a player."));
+            return 0;
+        }
+
+        rememberOrigin(player);
+
+        String dimString = ShowcaseDimensions.dimensionIdForStructure(structureName);
+        ResourceKey<Level> dimKey = ShowcaseDimensions.dimensionKeyForStructure(structureName);
+        ResourceLocation dimensionId = ShowcaseDimensions.dimensionLocationForStructure(structureName);
+
+        source.sendSuccess(() -> Component.literal(
+            "\u00a77Preparing \u00a76" + ShowcaseDimensions.formatName(structureName) + "\u00a77..."), false);
+
+        if (ShowcaseHandler.isResetting(dimensionId)) {
+            String token = UUID.randomUUID().toString();
+            player.getPersistentData().putString(PENDING_ENTER_TOKEN, token);
+            source.sendSuccess(() -> Component.literal(
+                "\u00a77Target dimension is resetting, about \u00a7e"
+                    + (ShowcaseHandler.resetTicksRemaining(dimensionId) / 20 + 1)
+                    + "\u00a77 seconds remaining..."), false);
+            waitForResetAndEnter(player, source.getServer(), dimKey, dimString, structureName, token);
+            return 1;
+        }
+
+        ServerLevel level = source.getServer().getLevel(dimKey);
+        if (level == null) {
+            source.sendFailure(Component.literal("\u00a7cShowcase dimension does not exist."));
+            return 0;
+        }
+
+        preloadAndEnter(player, level, dimString, structureName);
+        return 1;
+    }
+
+    public static int back(CommandSourceStack source) {
+        ServerPlayer player;
+        try {
+            player = source.getPlayerOrException();
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("\u00a7cThis command requires a player."));
+            return 0;
+        }
+
+        if (!player.getPersistentData().contains(ORIGIN_DIM)) {
+            source.sendFailure(Component.literal("\u00a7cNo previous teleport record."));
+            return 0;
+        }
+
+        ResourceLocation dimId = ResourceLocation.parse(player.getPersistentData().getString(ORIGIN_DIM));
+        ResourceKey<Level> dimKey = ResourceKey.create(Registries.DIMENSION, dimId);
+        ServerLevel target = source.getServer().getLevel(dimKey);
+        if (target == null) {
+            source.sendFailure(Component.literal("\u00a7cCannot find origin dimension."));
+            return 0;
+        }
+
+        player.teleportTo(target,
+            player.getPersistentData().getDouble(ORIGIN_X),
+            player.getPersistentData().getDouble(ORIGIN_Y),
+            player.getPersistentData().getDouble(ORIGIN_Z),
+            player.getPersistentData().getFloat(ORIGIN_YAW),
+            player.getPersistentData().getFloat(ORIGIN_PITCH));
+        player.getPersistentData().remove(ORIGIN_DIM);
+        source.sendSuccess(() -> Component.literal("\u00a7aReturned."), false);
+        return 1;
+    }
+
+    public static boolean consumeSpawnEventSkip(ServerPlayer player, ResourceLocation dimensionId) {
+        if (!dimensionId.toString().equals(player.getPersistentData().getString(SKIP_SPAWN_EVENT_DIM))) {
+            return false;
+        }
+        player.getPersistentData().remove(SKIP_SPAWN_EVENT_DIM);
+        return true;
+    }
+
+    public static void teleportToConfiguredSpawn(ServerPlayer player, ResourceLocation dimensionId) {
+        configuredSpawn(dimensionId).ifPresent(spawnPoint ->
+            player.getServer().tell(new TickTask(player.getServer().getTickCount(), () -> {
+                if (!dimensionId.equals(player.level().dimension().location())) return;
+                player.teleportTo(player.serverLevel(),
+                    spawnPoint.x, spawnPoint.y, spawnPoint.z,
+                    spawnPoint.yaw, spawnPoint.pitch);
+            })));
+    }
+
+    private static Optional<SpawnConfig.SpawnPoint> configuredSpawn(ResourceLocation dimensionId) {
+        return SpawnConfig.get(dimensionId.toString());
+    }
+
+    private static void rememberOrigin(ServerPlayer player) {
+        Level origin = player.level();
+        player.getPersistentData().putString(ORIGIN_DIM, origin.dimension().location().toString());
+        player.getPersistentData().putDouble(ORIGIN_X, player.getX());
+        player.getPersistentData().putDouble(ORIGIN_Y, player.getY());
+        player.getPersistentData().putDouble(ORIGIN_Z, player.getZ());
+        player.getPersistentData().putFloat(ORIGIN_YAW, player.getYRot());
+        player.getPersistentData().putFloat(ORIGIN_PITCH, player.getXRot());
+    }
+
+    private static void preloadAndEnter(ServerPlayer player, ServerLevel level,
+            String dimKey, String structureName) {
+        try {
+            var api = ChunkyProvider.get().getApi();
+            String token = UUID.randomUUID().toString();
+            player.getPersistentData().putString(PENDING_ENTER_TOKEN, token);
+
+            api.onGenerationComplete(event -> {
+                if (!dimKey.equals(event.world())) return;
+                player.getServer().tell(new TickTask(player.getServer().getTickCount(), () ->
+                    doEnterIfPending(player, level, structureName, token)));
+            });
+
+            if (!api.isRunning(dimKey)) {
+                api.startTask(dimKey, "square", 0, 0, 200, 200, "concentric");
+            }
+        } catch (Exception e) {
+            player.getPersistentData().remove(PENDING_ENTER_TOKEN);
+            doEnter(player, level, structureName);
+        }
+    }
+
+    private static void waitForResetAndEnter(ServerPlayer player, MinecraftServer server,
+            ResourceKey<Level> dimKey, String dimKeyString, String structureName, String token) {
+        server.tell(new TickTask(server.getTickCount() + 1, () -> {
+            if (!token.equals(player.getPersistentData().getString(PENDING_ENTER_TOKEN))) return;
+
+            ResourceLocation dimensionId = ShowcaseDimensions.dimensionLocationForStructure(structureName);
+            if (ShowcaseHandler.isResetting(dimensionId)) {
+                waitForResetAndEnter(player, server, dimKey, dimKeyString, structureName, token);
+                return;
+            }
+
+            ServerLevel level = server.getLevel(dimKey);
+            if (level == null) {
+                player.getPersistentData().remove(PENDING_ENTER_TOKEN);
+                player.sendSystemMessage(Component.literal("\u00a7cShowcase dimension does not exist."));
+                return;
+            }
+
+            preloadAndEnter(player, level, dimKeyString, structureName);
+        }));
+    }
+
+    private static void doEnterIfPending(ServerPlayer player, ServerLevel level, String name, String token) {
+        if (!token.equals(player.getPersistentData().getString(PENDING_ENTER_TOKEN))) return;
+        player.getPersistentData().remove(PENDING_ENTER_TOKEN);
+        doEnter(player, level, name);
+    }
+
+    private static void doEnter(ServerPlayer player, ServerLevel level, String name) {
+        String dimensionId = ShowcaseDimensions.dimensionIdForStructure(name);
+        player.getPersistentData().putString(SKIP_SPAWN_EVENT_DIM, dimensionId);
+        Optional<SpawnConfig.SpawnPoint> configuredSpawn = SpawnConfig.get(dimensionId);
+        if (configuredSpawn.isPresent()) {
+            SpawnConfig.SpawnPoint spawn = configuredSpawn.get();
+            player.teleportTo(level, spawn.x, spawn.y, spawn.z, spawn.yaw, spawn.pitch);
+        } else {
+            BlockPos target = ShowcaseStructures.findEntryPosition(level, name);
+            player.teleportTo(level,
+                target.getX() + 0.5, target.getY() + 10, target.getZ() + 0.5,
+                player.getYRot(), player.getXRot());
+        }
+        player.sendSystemMessage(Component.literal(
+            "\u00a7aTeleported to \u00a76" + ShowcaseDimensions.formatName(name)));
+    }
+}
