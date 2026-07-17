@@ -4,11 +4,14 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Vec3i;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.entity.Mob;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.ServerLevelAccessor;
 import net.minecraft.world.level.block.AbstractSkullBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
+import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.block.entity.SkullBlockEntity;
 
 import java.util.ArrayList;
@@ -38,12 +41,22 @@ public class StripBlockEntitiesMixin {
         Vec3i size = self.getSize(settings.getRotation());
         BlockPos.MutableBlockPos scan = new BlockPos.MutableBlockPos();
         List<BlockPos> skullsToRemove = new ArrayList<>();
+        List<BlockPos> spawnersToRemove = new ArrayList<>();
+        List<BlockPos> cobwebsToRemove = new ArrayList<>();
 
         for (int x = 0; x < size.getX(); x++) {
             for (int y = 0; y < size.getY(); y++) {
                 for (int z = 0; z < size.getZ(); z++) {
                     scan.set(pos.getX() + x, pos.getY() + y, pos.getZ() + z);
+                    if (sl.getBlockState(scan).is(Blocks.COBWEB)) {
+                        cobwebsToRemove.add(scan.immutable());
+                        continue;
+                    }
                     BlockEntity be = sl.getBlockEntity(scan);
+                    if (sl.getBlockState(scan).is(Blocks.SPAWNER) || be instanceof SpawnerBlockEntity) {
+                        spawnersToRemove.add(scan.immutable());
+                        continue;
+                    }
                     if (be instanceof SkullBlockEntity
                             && !(sl.getBlockState(scan).getBlock() instanceof AbstractSkullBlock)) {
                         skullsToRemove.add(scan.immutable());
@@ -56,6 +69,17 @@ public class StripBlockEntitiesMixin {
         }
         for (BlockPos p : skullsToRemove) {
             sl.setBlock(p, Blocks.AIR.defaultBlockState(), 3);
+        }
+        for (BlockPos p : spawnersToRemove) {
+            sl.setBlock(p, Blocks.AIR.defaultBlockState(), 3);
+        }
+        for (BlockPos p : cobwebsToRemove) {
+            sl.setBlock(p, Blocks.AIR.defaultBlockState(), 3);
+        }
+
+        AABB placedBounds = new AABB(pos, pos.offset(size));
+        for (Mob mob : sl.getEntitiesOfClass(Mob.class, placedBounds)) {
+            mob.discard();
         }
     }
 }

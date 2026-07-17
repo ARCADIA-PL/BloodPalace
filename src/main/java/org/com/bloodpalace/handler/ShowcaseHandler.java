@@ -1,6 +1,7 @@
 package org.com.bloodpalace.handler;
 
 import com.mojang.logging.LogUtils;
+import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
@@ -8,12 +9,19 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.TickTask;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.SpawnerBlockEntity;
 import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.chunk.ChunkStatus;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.phys.AABB;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.BlockEvent;
+import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.event.server.ServerAboutToStartEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
 import net.minecraftforge.event.server.ServerStoppingEvent;
@@ -68,6 +76,8 @@ public class ShowcaseHandler {
             border.setCenter(0, 0);
             border.setSize(BORDER_SIZE);
             teleportToConfiguredSpawn(player, toDim);
+            clearLoadedShowcaseMobs(player.serverLevel());
+            clearLoadedShowcaseBlocks(player.serverLevel());
         }
 
         if (ShowcaseDimensions.isShowcaseDimension(fromDim)) {
@@ -92,6 +102,24 @@ public class ShowcaseHandler {
         if (!ShowcaseDimensions.isShowcaseDimension(player.level().dimension().location())) return;
         if (player.isCreative()) return;
         event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public void onEntityJoinLevel(EntityJoinLevelEvent event) {
+        if (!(event.getEntity() instanceof Mob)) return;
+        if (!ShowcaseDimensions.isShowcaseDimension(event.getLevel().dimension().location())) return;
+
+        event.setCanceled(true);
+    }
+
+    @SubscribeEvent
+    public void onChunkLoad(ChunkEvent.Load event) {
+        if (!(event.getLevel() instanceof ServerLevel level)) return;
+        if (!(event.getChunk() instanceof LevelChunk chunk)) return;
+        if (!ShowcaseDimensions.isShowcaseDimension(level.dimension().location())) return;
+
+        level.getServer().tell(new TickTask(level.getServer().getTickCount(), () ->
+            clearChunkShowcaseBlocks(level, chunk)));
     }
 
     // ═══════════════════════════════════════════
@@ -139,6 +167,53 @@ public class ShowcaseHandler {
                     spawnPoint.x, spawnPoint.y, spawnPoint.z,
                     spawnPoint.yaw, spawnPoint.pitch);
             })));
+    }
+
+    private void clearLoadedShowcaseMobs(ServerLevel level) {
+        AABB bounds = new AABB(
+            -BORDER_SIZE, level.getMinBuildHeight(), -BORDER_SIZE,
+            BORDER_SIZE, level.getMaxBuildHeight(), BORDER_SIZE);
+        for (Mob mob : level.getEntitiesOfClass(Mob.class, bounds)) {
+            mob.discard();
+        }
+    }
+
+    private void clearLoadedShowcaseBlocks(ServerLevel level) {
+        int radius = BORDER_SIZE >> 4;
+        for (int cx = -radius; cx <= radius; cx++) {
+            for (int cz = -radius; cz <= radius; cz++) {
+                if (level.hasChunk(cx, cz)) {
+                    clearChunkShowcaseBlocks(level, level.getChunk(cx, cz));
+                }
+            }
+        }
+    }
+
+    private void clearChunkShowcaseBlocks(ServerLevel level, LevelChunk chunk) {
+        int minY = level.getMinBuildHeight();
+        int maxY = level.getMaxBuildHeight();
+        for (var entry : chunk.getBlockEntities().entrySet()) {
+            BlockPos pos = entry.getKey();
+            if (pos.getY() < minY || pos.getY() >= maxY) continue;
+            if (entry.getValue() instanceof SpawnerBlockEntity
+                    || level.getBlockState(pos).is(Blocks.SPAWNER)) {
+                level.setBlock(pos, Blocks.AIR.defaultBlockState(), 3);
+            }
+        }
+
+        int minX = chunk.getPos().getMinBlockX();
+        int minZ = chunk.getPos().getMinBlockZ();
+        BlockPos.MutableBlockPos scan = new BlockPos.MutableBlockPos();
+        for (int x = minX; x < minX + 16; x++) {
+            for (int z = minZ; z < minZ + 16; z++) {
+                for (int y = minY; y < maxY; y++) {
+                    scan.set(x, y, z);
+                    if (level.getBlockState(scan).is(Blocks.COBWEB)) {
+                        level.setBlock(scan, Blocks.AIR.defaultBlockState(), 3);
+                    }
+                }
+            }
+        }
     }
 
     static void deleteAllShowcaseDirs(MinecraftServer server) {
