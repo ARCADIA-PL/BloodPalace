@@ -56,7 +56,7 @@ public class ShowcaseHandler {
 
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
-        preloadHeavyStructuresSync(event.getServer());
+        /*preloadHeavyStructuresSync(event.getServer());*/
     }
 
     @SubscribeEvent

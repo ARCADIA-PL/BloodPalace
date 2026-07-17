@@ -48,6 +48,11 @@ public final class ShowcaseDimensions {
             && dimensionId.getPath().endsWith(DIM_SUFFIX);
     }
 
+    public static boolean isShowcaseStructureSet(ResourceLocation structureSetId) {
+        return NAMESPACE.equals(structureSetId.getNamespace())
+            && structureSetId.getPath().endsWith(DIM_SUFFIX);
+    }
+
     public static String structureFromShowcaseDimension(ResourceLocation dimensionId) {
         if (!isShowcaseDimension(dimensionId)) return null;
 
