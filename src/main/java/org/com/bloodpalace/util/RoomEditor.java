@@ -24,13 +24,24 @@ public final class RoomEditor {
     private RoomEditor() {
     }
 
+    public static int createCore(ServerPlayer player, BlockPos center) {
+        if (!isInShowcase(player)) return notInShowcase(player);
+        String roomId = nextRoomId(player);
+        Session session = Session.from(defaultRoom(roomId, center));
+        beginSession(player, session);
+        syncEditingCore(player, session);
+        syncScreen(player, session);
+        player.sendSystemMessage(Component.literal("\u00a7aCreated room core \u00a76" + roomId));
+        return 1;
+    }
+
     public static int edit(ServerPlayer player, String roomId) {
         if (!isInShowcase(player)) return notInShowcase(player);
 
         RoomConfig.Room room = RoomConfig.get(currentDimensionId(player), roomId)
             .orElseGet(() -> defaultRoom(roomId, player.blockPosition()));
         Session session = Session.from(room);
-        SESSIONS.put(player.getUUID(), session);
+        beginSession(player, session);
         syncEditingCore(player, session);
         syncScreen(player, session);
         player.sendSystemMessage(Component.literal("\u00a7aEditing room core \u00a76" + roomId));
@@ -45,7 +56,7 @@ public final class RoomEditor {
         }
 
         Session session = Session.from(core.toRoom());
-        SESSIONS.put(player.getUUID(), session);
+        beginSession(player, session);
         syncEditingCore(player, session);
         syncScreen(player, session);
         return 1;
@@ -189,6 +200,13 @@ public final class RoomEditor {
         RoomCoreManager.upsert(player.serverLevel(), session.toRoom(), true);
     }
 
+    private static void beginSession(ServerPlayer player, Session session) {
+        Session previous = SESSIONS.put(player.getUUID(), session);
+        if (previous != null && !previous.roomId.equals(session.roomId) && isInShowcase(player)) {
+            restorePersistedCore(player, previous);
+        }
+    }
+
     private static void syncScreen(ServerPlayer player, Session session) {
         if (session.isComplete()) {
             BloodPalaceNetwork.openRoomEditor(player, session.toRoom());
@@ -259,6 +277,22 @@ public final class RoomEditor {
                 minX + MIN_LENGTH_X - 1,
                 minY + MIN_HEIGHT_Y - 1,
                 minZ + MIN_WIDTH_Z - 1));
+    }
+
+    private static String nextRoomId(ServerPlayer player) {
+        int next = 1;
+        for (RoomConfig.Room room : RoomConfig.list(currentDimensionId(player))) {
+            String id = room.id;
+            if (!id.startsWith("room_")) continue;
+            try {
+                next = Math.max(next, Integer.parseInt(id.substring("room_".length())) + 1);
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        while (RoomCoreManager.find(player.serverLevel(), "room_" + next) != null) {
+            next++;
+        }
+        return "room_" + next;
     }
 
     private static final class Session {
