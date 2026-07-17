@@ -10,6 +10,7 @@ public final class ClientPacketHandlers {
 
     public static void openRoomEditor(RoomEditorState state) {
         Minecraft minecraft = Minecraft.getInstance();
+        RoomHighlightRenderer.setEditingState(state);
         if (minecraft.screen instanceof RoomEditorScreen screen && screen.isEditing(state.roomId())) {
             screen.updateState(state);
             return;

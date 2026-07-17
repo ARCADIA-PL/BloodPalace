@@ -65,6 +65,13 @@ public class ShowcaseHandler {
     }
 
     @SubscribeEvent
+    public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (!ShowcaseDimensions.isShowcaseDimension(player.level().dimension().location())) return;
+        RoomCoreManager.ensureForDimension(player.serverLevel());
+    }
+
+    @SubscribeEvent
     public void onPlayerChangeDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
 

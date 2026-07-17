@@ -18,7 +18,7 @@ public final class RoomCoreManager {
             RoomCoreEntity existing = find(level, room.id);
             if (existing == null) {
                 upsert(level, room, false);
-            } else if (!existing.isTemporary()) {
+            } else {
                 existing.setRoom(room, false);
             }
         }

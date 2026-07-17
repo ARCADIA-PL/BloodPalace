@@ -27,9 +27,11 @@ public final class RoomEditor {
     public static int createCore(ServerPlayer player, BlockPos center) {
         if (!isInShowcase(player)) return notInShowcase(player);
         String roomId = nextRoomId(player);
-        Session session = Session.from(defaultRoom(roomId, center));
+        RoomConfig.Room room = defaultRoom(roomId, center);
+        if (!saveRoom(player, room)) return 0;
+        Session session = Session.from(room);
         beginSession(player, session);
-        syncEditingCore(player, session);
+        RoomCoreManager.upsert(player.serverLevel(), room, false);
         syncScreen(player, session);
         player.sendSystemMessage(Component.literal("\u00a7aCreated room core \u00a76" + roomId));
         return 1;
@@ -116,12 +118,7 @@ public final class RoomEditor {
         }
 
         RoomConfig.Room room = session.toRoom();
-        try {
-            RoomConfig.set(currentDimensionId(player), room);
-        } catch (IOException e) {
-            player.sendSystemMessage(Component.literal("\u00a7cFailed to save room config: " + RoomConfig.getPath()));
-            return 0;
-        }
+        if (!saveRoom(player, room)) return 0;
 
         RoomCoreManager.upsert(player.serverLevel(), room, false);
         SESSIONS.remove(player.getUUID());
@@ -219,6 +216,16 @@ public final class RoomEditor {
             RoomCoreManager.upsert(player.serverLevel(), saved.get(), false);
         } else {
             RoomCoreManager.remove(player.serverLevel(), session.roomId);
+        }
+    }
+
+    private static boolean saveRoom(ServerPlayer player, RoomConfig.Room room) {
+        try {
+            RoomConfig.set(currentDimensionId(player), room);
+            return true;
+        } catch (IOException e) {
+            player.sendSystemMessage(Component.literal("\u00a7cFailed to save room config: " + RoomConfig.getPath()));
+            return false;
         }
     }
 
