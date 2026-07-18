@@ -26,6 +26,7 @@ public class RoomEditorScreen extends Screen {
     private static final int TAB_HEIGHT = 18;
     private static final int BUTTON_HEIGHT = 16;
     private static final int FIELD_HEIGHT = 16;
+    private static final int SLIDER_TRACK_H = 12;
     private static final int ROW_GAP = 4;
     private static final int BODY_PAD = 5;
 
@@ -262,11 +263,12 @@ public class RoomEditorScreen extends Screen {
         hotspots.add(Hotspot.button(Action.SAVE, layout.contentRight - actionW * 2 - 5, actionY,
             actionW, BUTTON_HEIGHT, "Save"));
 
-        int tabW = Math.max(36, (layout.contentW - 10) / 3);
+        int tabW = Math.min(50, Math.max(24, (layout.contentW - 10) / 3));
+        int tabGap = Math.max(2, Math.min(5, (layout.contentW - 10) / 18));
         int tabX = layout.contentX;
         for (Tab tab : Tab.values()) {
             hotspots.add(Hotspot.tab(tab, tabX, layout.tabY, tabW, TAB_HEIGHT));
-            tabX += tabW + 5;
+            tabX += tabW + tabGap;
         }
 
         int contentY = layout.bodyY + BODY_PAD - Math.round(scroll);
@@ -414,9 +416,12 @@ public class RoomEditorScreen extends Screen {
         drawButton(graphics, findAction(action(axis, false, sizePage)));
         drawButton(graphics, findAction(action(axis, true, sizePage)));
 
-        if (!layout.narrow) {
-            String range = sizePage ? minSize(axis) + "-" + MAX_SIZE : "center +/- " + POS_RANGE;
-            graphics.drawString(font, range, rects.slider.x, rects.slider.y - 9, COLOR_MUTED, false);
+        String range = sizePage ? minSize(axis) + "-" + MAX_SIZE : "center +/- " + POS_RANGE;
+        int rangeW = font.width(range);
+        if (rects.slider.w > rangeW + 20) {
+            graphics.drawString(font, range,
+                rects.slider.x + rects.slider.w - rangeW - 4,
+                rects.slider.y + 2, COLOR_MUTED, false);
         }
     }
 
@@ -440,7 +445,7 @@ public class RoomEditorScreen extends Screen {
         int fill = active ? 0x8F211515 : hot ? 0x701F1414 : 0x3F120D0D;
         int line = active ? COLOR_ACCENT : hot ? 0x906B242D : 0x4543312D;
         drawPanel(graphics, hotspot.x, hotspot.y, hotspot.w, hotspot.h, alpha(fill), alpha(line));
-        String label = hotspot.label;
+        String label = trim(hotspot.label, hotspot.w - 8);
         int color = active ? COLOR_TEXT : hot ? COLOR_TEXT_SOFT : COLOR_MUTED;
         graphics.drawString(font, label, hotspot.x + (hotspot.w - font.width(label)) / 2,
             hotspot.y + 4, color, false);
@@ -476,13 +481,30 @@ public class RoomEditorScreen extends Screen {
     private void drawSlider(GuiGraphics graphics, Hotspot hotspot) {
         if (hotspot == null) return;
         double percent = sliderPercent(hotspot.slider);
-        int trackY = hotspot.y + hotspot.h / 2;
-        graphics.fill(hotspot.x, trackY - 2, hotspot.x + hotspot.w, trackY + 2, alpha(0x88493632));
-        graphics.fill(hotspot.x, trackY - 2, hotspot.x + (int) (hotspot.w * percent), trackY + 2,
+
+        // Thin track line (3px) centered vertically in the hotspot
+        int trackCY = hotspot.y + hotspot.h / 2;
+        int trackH = 3;
+        int trackY = trackCY - trackH / 2;
+
+        // Track background
+        graphics.fill(hotspot.x, trackY, hotspot.x + hotspot.w, trackY + trackH,
+            alpha(0x88493632));
+        // Track fill (accent color to the knob position)
+        graphics.fill(hotspot.x, trackY,
+            hotspot.x + (int) (hotspot.w * percent), trackY + trackH,
             COLOR_ACCENT);
+
+        // Knob fills full hotspot height, centered on the percent position
         int knobX = hotspot.x + (int) (hotspot.w * percent);
-        graphics.fill(knobX - 3, hotspot.y, knobX + 3, hotspot.y + hotspot.h, COLOR_TEXT);
-        graphics.fill(knobX - 1, hotspot.y - 2, knobX + 1, hotspot.y + hotspot.h + 2, COLOR_ACCENT);
+        int knobHW = 3;
+        graphics.fill(knobX - knobHW, hotspot.y,
+            knobX + knobHW, hotspot.y + hotspot.h,
+            COLOR_TEXT);
+        // Accent line through knob center
+        graphics.fill(knobX - 1, hotspot.y,
+            knobX + 1, hotspot.y + hotspot.h,
+            COLOR_ACCENT);
     }
 
     private void drawSectionTitle(GuiGraphics graphics, int x, int y, String title) {
@@ -493,13 +515,21 @@ public class RoomEditorScreen extends Screen {
     private void drawScrollbar(GuiGraphics graphics, Layout layout) {
         float max = maxScroll(layout);
         if (max <= 0.0F || layout.bodyH <= 0) return;
-        int trackX = layout.bodyRight - 4;
+        int trackX = layout.bodyRight + 1;
+        int trackW = 3;
         int trackY = layout.bodyY + 2;
         int trackH = Math.max(12, layout.bodyH - 4);
         int thumbH = Math.max(18, (int) (trackH * (layout.bodyH / (float) contentHeight(layout))));
         int thumbY = trackY + (int) ((trackH - thumbH) * (scroll / max));
-        graphics.fill(trackX, trackY, trackX + 2, trackY + trackH, 0x55392A27);
-        graphics.fill(trackX - 1, thumbY, trackX + 3, thumbY + thumbH, COLOR_ACCENT);
+
+        // Clamp to panel bounds
+        int panelRight = layout.panelX + layout.panelW;
+        if (trackX + trackW + 1 > panelRight) {
+            trackX = panelRight - trackW - 2;
+        }
+
+        graphics.fill(trackX, trackY, trackX + trackW, trackY + trackH, 0x55392A27);
+        graphics.fill(trackX - 1, thumbY, trackX + trackW + 1, thumbY + thumbH, COLOR_ACCENT);
     }
 
     private int rowFill(Rect row) {
@@ -515,37 +545,47 @@ public class RoomEditorScreen extends Screen {
 
     private Rect infoFieldRect(Layout layout, int rowY, int rowH) {
         Rect row = contentRow(layout, rowY, rowH);
-        int labelW = layout.ultraNarrow ? 58 : 68;
-        return new Rect(row.x + labelW, row.y + 7, Math.max(44, row.w - labelW - 8), FIELD_HEIGHT);
+        int labelW = layout.ultraNarrow ? 54 : 64;
+        int fieldW = Math.max(52, row.w - labelW - 8);
+        return new Rect(row.x + labelW, row.y + 7, fieldW, FIELD_HEIGHT);
     }
 
     private ControlRects controlRects(Layout layout, Rect row) {
-        int buttonW = layout.ultraNarrow ? 18 : 16;
-        int fieldW = layout.ultraNarrow ? 48 : layout.narrow ? 56 : 52;
-        fieldW = Math.min(fieldW, Math.max(40, row.w / 3));
+        int buttonW = layout.ultraNarrow ? 20 : 18;
+        int fieldW = layout.ultraNarrow ? 54 : layout.narrow ? 58 : 56;
+        fieldW = Math.min(fieldW, Math.max(52, (row.w - 100) / 2));
+
+        // Layer 1 (top): field row
+        int fieldY = row.y + 3;
         int fieldX = row.x + row.w - fieldW - 8;
-        int fieldY = row.y + 5;
+
+        // Layer 2 (bottom): slider + buttons row, 18px tall zone
+        int bottomTop = row.y + row.h - 18;
+        int sliderY = bottomTop + 3;
+        int buttonY = bottomTop + 1;
+
+        // Buttons anchored to right edge
         int plusX = row.x + row.w - buttonW - 8;
         int minusX = plusX - buttonW - 4;
-        int buttonY = row.y + row.h - BUTTON_HEIGHT - 4;
-        int sliderY = row.y + row.h - 8;
-        int sliderX = row.x + 8;
-        int sliderW = Math.max(8, minusX - sliderX - 8);
 
-        Rect field = new Rect(fieldX, fieldY, fieldW, FIELD_HEIGHT);
-        Rect slider = new Rect(sliderX, sliderY, sliderW, 4);
-        Rect minus = new Rect(minusX, buttonY, buttonW, BUTTON_HEIGHT);
-        Rect plus = new Rect(plusX, buttonY, buttonW, BUTTON_HEIGHT);
+        // Slider spans from left edge to just before minus button
+        int sliderX = row.x + 8;
+        int sliderW = Math.max(40, minusX - sliderX - 8);
+
+        Rect field  = new Rect(fieldX,  fieldY,  fieldW,  FIELD_HEIGHT);
+        Rect slider = new Rect(sliderX, sliderY, sliderW, SLIDER_TRACK_H);
+        Rect minus  = new Rect(minusX, buttonY, buttonW, BUTTON_HEIGHT);
+        Rect plus   = new Rect(plusX,  buttonY, buttonW, BUTTON_HEIGHT);
         return new ControlRects(field, slider, minus, plus);
     }
 
     private int infoRowHeight(Layout layout) {
-        return layout.narrow ? 34 : 30;
+        return layout.narrow ? 38 : 34;
     }
 
     private int controlRowHeight(Layout layout) {
-        if (layout.ultraNarrow) return 60;
-        return layout.narrow ? 46 : 40;
+        if (layout.ultraNarrow) return 64;
+        return layout.narrow ? 50 : 44;
     }
 
     private int contentHeight(Layout layout) {
@@ -569,9 +609,8 @@ public class RoomEditorScreen extends Screen {
         boolean narrow = width < 880;
         boolean tiny = height < 430;
 
-        int widthCap = Math.max(1, (int) (width * 0.25F));
-        int minPanelW = Math.min(180, widthCap);
-        int panelW = clamp((int) (width * 0.22F), minPanelW, Math.min(280, widthCap));
+        // Panel width: ~22% of screen width, clamped between 160 and 280 pixels
+        int panelW = clamp((int) (width * 0.22F), 160, 280);
 
         int panelX = Math.max(margin, width - margin - panelW);
         int panelY = margin;
