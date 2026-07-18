@@ -43,16 +43,11 @@ public class TeleportAnchorRenderer extends EntityRenderer<TeleportAnchorEntity>
         poseStack.pushPose();
 
         float topAlpha = 0.14F + breath * 0.18F;
-        float glowAlpha = 0.06F + breath * 0.09F;
         float rippleAlpha = 0.08F + breath * 0.16F;
         double half = 0.5D;
         double height = 0.28D + breath * 0.24D;
-        double outer = half + 0.12D;
-        double inner = half - 0.16D;
 
-        renderHorizontalQuad(quads, poseStack, -outer, -outer, outer, outer, 0.003D, glowAlpha);
         renderHorizontalQuad(quads, poseStack, -half, -half, half, half, 0.004D, topAlpha);
-        renderHorizontalQuad(quads, poseStack, -inner, -inner, inner, inner, 0.005D, topAlpha * 0.6F);
 
         renderVerticalStrip(quads, poseStack, -half, -half, half, -half, height, rippleAlpha);
         renderVerticalStrip(quads, poseStack, half, -half, half, half, height, rippleAlpha);
@@ -76,8 +71,8 @@ public class TeleportAnchorRenderer extends EntityRenderer<TeleportAnchorEntity>
         PoseStack.Pose pose = poseStack.last();
         vertex(vertices, pose, x1, 0.004D, z1, alpha);
         vertex(vertices, pose, x2, 0.004D, z2, alpha);
-        vertex(vertices, pose, x2, height, z2, 0.0F);
-        vertex(vertices, pose, x1, height, z1, 0.0F);
+        vertex(vertices, pose, x2, height, z2, alpha * 0.15F);
+        vertex(vertices, pose, x1, height, z1, alpha * 0.15F);
     }
 
     private static void vertex(VertexConsumer vertices, PoseStack.Pose pose,
