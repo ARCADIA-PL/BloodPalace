@@ -2,10 +2,10 @@ package org.com.bloodpalace.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.math.Axis;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.world.phys.AABB;
@@ -35,44 +35,76 @@ public final class TeleportAnchorEffectRenderer {
 
         AABB searchBounds = player.getBoundingBox().inflate(SEARCH_RADIUS);
         MultiBufferSource.BufferSource buffers = minecraft.renderBuffers().bufferSource();
-        VertexConsumer vertices = buffers.getBuffer(RenderType.lightning());
+        VertexConsumer lines = buffers.getBuffer(RenderType.lines());
         PoseStack poseStack = event.getPoseStack();
         Vec3 camera = event.getCamera().getPosition();
         long time = level.getGameTime();
+        float pulse = 0.45F + 0.25F * (float) Math.sin((time + event.getPartialTick()) * 0.12F);
 
         poseStack.pushPose();
         poseStack.translate(-camera.x, -camera.y, -camera.z);
         for (TeleportAnchorEntity anchor : level.getEntitiesOfClass(TeleportAnchorEntity.class, searchBounds)) {
-            renderEffect(anchor, poseStack, vertices, time, event.getPartialTick());
+            renderEffect(anchor, poseStack, lines, pulse, time);
         }
         poseStack.popPose();
-        buffers.endBatch(RenderType.lightning());
+        buffers.endBatch(RenderType.lines());
     }
 
     private static void renderEffect(TeleportAnchorEntity anchor, PoseStack poseStack,
-            VertexConsumer vertices, long time, float partialTick) {
-        float pulse = (float) (0.5D + 0.5D * Math.sin((time + partialTick) * 0.12D));
-        float alpha = 0.24F + pulse * 0.18F;
-
+            VertexConsumer lines, float pulse, long time) {
         poseStack.pushPose();
-        poseStack.translate(anchor.getX(), anchor.getY() + 0.004D, anchor.getZ());
-        renderDiamond(vertices, poseStack, 1.15F, 0.05F, 0.9F, 1.0F, alpha);
-        poseStack.mulPose(Axis.YP.rotationDegrees((time + partialTick) * 2.0F));
-        renderDiamond(vertices, poseStack, 0.78F, 0.65F, 0.1F, 1.0F, alpha * 0.9F);
+        poseStack.translate(anchor.getX(), anchor.getY() + 0.02D, anchor.getZ());
+
+        float outer = 1.18F;
+        float inner = 0.78F;
+        float core = 0.42F;
+
+        renderSquareOutline(poseStack, lines, outer, 0.08F, 0.95F, 1.0F, 0.85F);
+        renderSquareOutline(poseStack, lines, inner, 0.65F, 0.85F, 1.0F, 0.55F + pulse * 0.2F);
+        renderSquareOutline(poseStack, lines, core, 1.0F, 0.45F, 0.78F, 0.65F);
+
+        float spin = (time % 360) * 4.0F;
+        poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(spin));
+        renderCross(poseStack, lines, 0.92D, 1.0F, 0.65F, 0.18F, 0.9F);
+        renderCross(poseStack, lines, 0.56D, 1.0F, 0.9F, 0.3F, 0.7F);
+
         poseStack.popPose();
     }
 
-    private static void renderDiamond(VertexConsumer vertices, PoseStack poseStack, float radius,
-            float red, float green, float blue, float alpha) {
+    private static void renderSquareOutline(PoseStack poseStack, VertexConsumer lines,
+            float radius, float red, float green, float blue, float alpha) {
         PoseStack.Pose pose = poseStack.last();
-        vertex(vertices, pose, 0.0F, 0.0F, -radius, red, green, blue, alpha);
-        vertex(vertices, pose, radius, 0.0F, 0.0F, red, green, blue, alpha);
-        vertex(vertices, pose, 0.0F, 0.0F, radius, red, green, blue, alpha);
-        vertex(vertices, pose, -radius, 0.0F, 0.0F, red, green, blue, alpha);
+        double y = 0.004D;
+        LevelRenderer.renderLineBox(
+            poseStack,
+            lines,
+            -radius, y, -radius,
+            radius, y + 0.002D, radius,
+            red, green, blue, alpha);
+        line(lines, pose, -radius, y, -radius, radius, y, -radius, red, green, blue, alpha);
+        line(lines, pose, radius, y, -radius, radius, y, radius, red, green, blue, alpha);
+        line(lines, pose, radius, y, radius, -radius, y, radius, red, green, blue, alpha);
+        line(lines, pose, -radius, y, radius, -radius, y, -radius, red, green, blue, alpha);
     }
 
-    private static void vertex(VertexConsumer vertices, PoseStack.Pose pose,
-            float x, float y, float z, float red, float green, float blue, float alpha) {
-        vertices.vertex(pose.pose(), x, y, z).color(red, green, blue, alpha).endVertex();
+    private static void renderCross(PoseStack poseStack, VertexConsumer lines, double radius,
+            float red, float green, float blue, float alpha) {
+        PoseStack.Pose pose = poseStack.last();
+        double y = 0.012D;
+        line(lines, pose, -radius, y, 0.0D, radius, y, 0.0D, red, green, blue, alpha);
+        line(lines, pose, 0.0D, y, -radius, 0.0D, y, radius, red, green, blue, alpha);
+    }
+
+    private static void line(VertexConsumer lines, PoseStack.Pose pose,
+            double x1, double y1, double z1, double x2, double y2, double z2,
+            float red, float green, float blue, float alpha) {
+        lines.vertex(pose.pose(), (float) x1, (float) y1, (float) z1)
+            .color(red, green, blue, alpha)
+            .normal(pose.normal(), 0.0F, 1.0F, 0.0F)
+            .endVertex();
+        lines.vertex(pose.pose(), (float) x2, (float) y2, (float) z2)
+            .color(red, green, blue, alpha)
+            .normal(pose.normal(), 0.0F, 1.0F, 0.0F)
+            .endVertex();
     }
 }
