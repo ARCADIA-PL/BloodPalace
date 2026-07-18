@@ -6,6 +6,10 @@ import org.com.bloodpalace.config.RoomConfig;
 import org.com.bloodpalace.entity.BloodPalaceEntityTypes;
 import org.com.bloodpalace.entity.RoomCoreEntity;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
 public final class RoomCoreManager {
 
     private RoomCoreManager() {
@@ -25,7 +29,7 @@ public final class RoomCoreManager {
     }
 
     public static RoomCoreEntity upsert(ServerLevel level, RoomConfig.Room room, boolean temporary) {
-        RoomCoreEntity core = find(level, room.id);
+        RoomCoreEntity core = findCanonical(level, room);
         if (core == null) {
             core = BloodPalaceEntityTypes.ROOM_CORE.get().create(level);
             if (core == null) return null;
@@ -38,18 +42,45 @@ public final class RoomCoreManager {
     }
 
     public static void remove(ServerLevel level, String roomId) {
-        RoomCoreEntity core = find(level, roomId);
-        if (core != null) {
+        for (RoomCoreEntity core : findAll(level, roomId)) {
             core.discard();
         }
     }
 
     public static RoomCoreEntity find(ServerLevel level, String roomId) {
+        List<RoomCoreEntity> cores = findAll(level, roomId);
+        if (cores.isEmpty()) return null;
+        RoomCoreEntity first = cores.get(0);
+        for (int i = 1; i < cores.size(); i++) {
+            cores.get(i).discard();
+        }
+        return first;
+    }
+
+    private static RoomCoreEntity findCanonical(ServerLevel level, RoomConfig.Room room) {
+        List<RoomCoreEntity> cores = findAll(level, room.id);
+        if (cores.isEmpty()) return null;
+
+        double centerX = (room.min.x + room.max.x + 1.0D) / 2.0D;
+        double centerY = (room.min.y + room.max.y + 1.0D) / 2.0D;
+        double centerZ = (room.min.z + room.max.z + 1.0D) / 2.0D;
+        cores.sort(Comparator.comparingDouble(core ->
+            core.distanceToSqr(centerX, centerY, centerZ)));
+
+        RoomCoreEntity canonical = cores.get(0);
+        for (int i = 1; i < cores.size(); i++) {
+            cores.get(i).discard();
+        }
+        return canonical;
+    }
+
+    private static List<RoomCoreEntity> findAll(ServerLevel level, String roomId) {
+        List<RoomCoreEntity> cores = new ArrayList<>();
         for (Entity entity : level.getAllEntities()) {
             if (entity instanceof RoomCoreEntity core && core.getRoomId().equals(roomId)) {
-                return core;
+                cores.add(core);
             }
         }
-        return null;
+        return cores;
     }
 }

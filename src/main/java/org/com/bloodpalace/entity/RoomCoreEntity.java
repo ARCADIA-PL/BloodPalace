@@ -77,6 +77,14 @@ public class RoomCoreEntity extends Entity {
         moveToCenter();
     }
 
+    @Override
+    public void onSyncedDataUpdated(EntityDataAccessor<?> key) {
+        super.onSyncedDataUpdated(key);
+        if (key == MIN_X || key == MIN_Y || key == MIN_Z || key == MAX_X || key == MAX_Y || key == MAX_Z) {
+            moveToCenter();
+        }
+    }
+
     public String getRoomId() {
         return entityData.get(ROOM_ID);
     }
@@ -190,6 +198,13 @@ public class RoomCoreEntity extends Entity {
 
     private void moveToCenter() {
         AABB bounds = roomBounds();
-        setPos(bounds.getCenter().x, bounds.getCenter().y, bounds.getCenter().z);
+        double x = bounds.getCenter().x;
+        double y = bounds.getCenter().y;
+        double z = bounds.getCenter().z;
+        if (level().isClientSide) {
+            setPos(x, y, z);
+        } else {
+            teleportTo(x, y, z);
+        }
     }
 }
