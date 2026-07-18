@@ -15,6 +15,10 @@ public final class BloodPalaceItems {
         "room_core",
         () -> new RoomCoreItem(new Item.Properties().stacksTo(16)));
 
+    public static final RegistryObject<Item> TELEPORT_ANCHOR = ITEMS.register(
+        "teleport_anchor",
+        () -> new TeleportAnchorItem(new Item.Properties().stacksTo(16)));
+
     private BloodPalaceItems() {
     }
 }

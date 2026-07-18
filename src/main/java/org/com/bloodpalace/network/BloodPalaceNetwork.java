@@ -9,6 +9,8 @@ import net.minecraftforge.network.simple.SimpleChannel;
 import org.com.bloodpalace.BloodPalace;
 import org.com.bloodpalace.config.RoomConfig;
 
+import java.util.List;
+
 public final class BloodPalaceNetwork {
 
     private static final String PROTOCOL_VERSION = "1";
@@ -47,6 +49,18 @@ public final class BloodPalaceNetwork {
             .decoder(RoomOverlayPacket::decode)
             .consumerMainThread(RoomOverlayPacket::handle)
             .add();
+
+        CHANNEL.messageBuilder(OpenTeleportAnchorScreenPacket.class, packetId++, NetworkDirection.PLAY_TO_CLIENT)
+            .encoder(OpenTeleportAnchorScreenPacket::encode)
+            .decoder(OpenTeleportAnchorScreenPacket::decode)
+            .consumerMainThread(OpenTeleportAnchorScreenPacket::handle)
+            .add();
+
+        CHANNEL.messageBuilder(TeleportAnchorSelectPacket.class, packetId++, NetworkDirection.PLAY_TO_SERVER)
+            .encoder(TeleportAnchorSelectPacket::encode)
+            .decoder(TeleportAnchorSelectPacket::decode)
+            .consumerMainThread(TeleportAnchorSelectPacket::handle)
+            .add();
     }
 
     public static void openRoomEditor(ServerPlayer player, RoomConfig.Room room) {
@@ -62,7 +76,16 @@ public final class BloodPalaceNetwork {
         CHANNEL.sendToServer(packet);
     }
 
+    public static void sendToServer(TeleportAnchorSelectPacket packet) {
+        CHANNEL.sendToServer(packet);
+    }
+
     public static void sendToPlayer(ServerPlayer player, RoomOverlayPacket packet) {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
+    }
+
+    public static void openTeleportAnchors(ServerPlayer player, List<TeleportAnchorInfo> anchors) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player),
+            new OpenTeleportAnchorScreenPacket(anchors));
     }
 }

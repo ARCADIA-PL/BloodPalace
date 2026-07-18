@@ -1,4 +1,7 @@
 {
-  "item.bloodpalace.room_core": "房间核心",
-  "entity.bloodpalace.room_core": "房间核心"
+  "item.bloodpalace.room_core": "\u623f\u95f4\u6838\u5fc3",
+  "item.bloodpalace.teleport_anchor": "\u4f20\u9001\u951a\u70b9",
+  "entity.bloodpalace.room_core": "\u623f\u95f4\u6838\u5fc3",
+  "entity.bloodpalace.teleport_anchor": "\u4f20\u9001\u951a\u70b9",
+  "creativetab.bloodpalace.main": "BloodPalace"
 }

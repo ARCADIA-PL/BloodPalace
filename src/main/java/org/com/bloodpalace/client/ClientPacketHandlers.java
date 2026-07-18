@@ -3,6 +3,9 @@ package org.com.bloodpalace.client;
 import net.minecraft.client.Minecraft;
 import org.com.bloodpalace.network.RoomEditorState;
 import org.com.bloodpalace.network.RoomOverlayPacket;
+import org.com.bloodpalace.network.TeleportAnchorInfo;
+
+import java.util.List;
 
 public final class ClientPacketHandlers {
 
@@ -21,5 +24,9 @@ public final class ClientPacketHandlers {
 
     public static void showRoomOverlay(RoomOverlayPacket packet) {
         RoomOverlayRenderer.push(packet);
+    }
+
+    public static void openTeleportAnchors(List<TeleportAnchorInfo> anchors) {
+        Minecraft.getInstance().setScreen(new TeleportAnchorScreen(anchors));
     }
 }

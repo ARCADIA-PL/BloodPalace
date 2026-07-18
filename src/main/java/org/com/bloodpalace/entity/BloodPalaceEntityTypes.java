@@ -20,6 +20,14 @@ public final class BloodPalaceEntityTypes {
             .updateInterval(10)
             .build(BloodPalace.MODID + ":room_core"));
 
+    public static final RegistryObject<EntityType<TeleportAnchorEntity>> TELEPORT_ANCHOR = ENTITY_TYPES.register(
+        "teleport_anchor",
+        () -> EntityType.Builder.<TeleportAnchorEntity>of(TeleportAnchorEntity::new, MobCategory.MISC)
+            .sized(0.8F, 0.2F)
+            .clientTrackingRange(512)
+            .updateInterval(10)
+            .build(BloodPalace.MODID + ":teleport_anchor"));
+
     private BloodPalaceEntityTypes() {
     }
 }

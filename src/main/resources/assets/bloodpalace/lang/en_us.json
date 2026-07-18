@@ -1,4 +1,7 @@
 {
   "item.bloodpalace.room_core": "Room Core",
-  "entity.bloodpalace.room_core": "Room Core"
+  "item.bloodpalace.teleport_anchor": "Teleport Anchor",
+  "entity.bloodpalace.room_core": "Room Core",
+  "entity.bloodpalace.teleport_anchor": "Teleport Anchor",
+  "creativetab.bloodpalace.main": "BloodPalace"
 }

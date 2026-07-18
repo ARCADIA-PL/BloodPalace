@@ -1,9 +1,7 @@
 package org.com.bloodpalace;
 
 import com.mojang.logging.LogUtils;
-import net.minecraft.world.item.CreativeModeTabs;
 import net.minecraftforge.common.MinecraftForge;
-import net.minecraftforge.event.BuildCreativeModeTabContentsEvent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
@@ -13,6 +11,7 @@ import org.com.bloodpalace.config.RoomConfig;
 import org.com.bloodpalace.config.SpawnConfig;
 import org.com.bloodpalace.entity.BloodPalaceEntityTypes;
 import org.com.bloodpalace.handler.ShowcaseHandler;
+import org.com.bloodpalace.item.BloodPalaceCreativeTabs;
 import org.com.bloodpalace.item.BloodPalaceItems;
 import org.com.bloodpalace.network.BloodPalaceNetwork;
 import org.com.bloodpalace.worldgen.placement.BloodPalacePlacementTypes;
@@ -30,8 +29,8 @@ public class BloodPalace {
         var modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         BloodPalacePlacementTypes.STRUCTURE_PLACEMENT_TYPES.register(modEventBus);
         BloodPalaceEntityTypes.ENTITY_TYPES.register(modEventBus);
+        BloodPalaceCreativeTabs.CREATIVE_TABS.register(modEventBus);
         BloodPalaceItems.ITEMS.register(modEventBus);
-        modEventBus.addListener(this::addCreative);
         BloodPalaceNetwork.register();
         SpawnConfig.init();
         RoomConfig.init();
@@ -42,11 +41,5 @@ public class BloodPalace {
     @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
         BloodPalaceCommand.register(event.getDispatcher());
-    }
-
-    private void addCreative(BuildCreativeModeTabContentsEvent event) {
-        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
-            event.accept(BloodPalaceItems.ROOM_CORE);
-        }
     }
 }

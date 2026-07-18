@@ -19,6 +19,7 @@ public final class BloodPalaceClientModEvents {
     @SubscribeEvent
     public static void registerEntityRenderers(EntityRenderersEvent.RegisterRenderers event) {
         event.registerEntityRenderer(BloodPalaceEntityTypes.ROOM_CORE.get(), RoomCoreRenderer::new);
+        event.registerEntityRenderer(BloodPalaceEntityTypes.TELEPORT_ANCHOR.get(), TeleportAnchorRenderer::new);
     }
 
     @Mod.EventBusSubscriber(modid = BloodPalace.MODID, value = Dist.CLIENT)
