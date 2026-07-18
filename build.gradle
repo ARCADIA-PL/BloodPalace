@@ -99,6 +99,9 @@ dependencies {
         jarJar.ranged(it, "[0.5.0,)")
     }
 
+    implementation fg.deobf("curse.maven:embeddium-908741:5556138")
+    implementation fg.deobf("curse.maven:chloride-931925:6615986")
+    implementation fg.deobf("curse.maven:oculus-581495:5299671")
     implementation fg.deobf("curse.maven:when-dungeons-arise-442508:4983862")
     implementation fg.deobf("curse.maven:chunky-pregenerator-forge-485681:5320028")
 }

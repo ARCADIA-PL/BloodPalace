@@ -68,7 +68,7 @@ public class RoomEditorScreen extends Screen {
         this.baseCenterX = centerX(this.state);
         this.baseCenterY = centerY(this.state);
         this.baseCenterZ = centerZ(this.state);
-        RoomHighlightRenderer.setEditingState(this.state);
+        RoomCoreRenderer.setEditingState(this.state);
     }
 
     @Override
@@ -90,7 +90,7 @@ public class RoomEditorScreen extends Screen {
 
     public void updateState(RoomEditorState state) {
         this.state = normalize(state);
-        RoomHighlightRenderer.setEditingState(this.state);
+        RoomCoreRenderer.setEditingState(this.state);
         clampScroll(layout());
     }
 
@@ -762,7 +762,7 @@ public class RoomEditorScreen extends Screen {
 
     private void setState(RoomEditorState next, boolean send) {
         state = normalize(next);
-        RoomHighlightRenderer.setEditingState(state);
+        RoomCoreRenderer.setEditingState(state);
         clampScroll(layout());
         if (send) sendUpdate();
     }
@@ -785,7 +785,7 @@ public class RoomEditorScreen extends Screen {
     private void closeLocally() {
         if (closing) return;
         closing = true;
-        RoomHighlightRenderer.clearEditingState();
+        RoomCoreRenderer.clearEditingState();
         restoreCamera();
         Minecraft.getInstance().setScreen(null);
     }
