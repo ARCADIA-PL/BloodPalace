@@ -35,6 +35,18 @@ public final class BloodPalaceNetwork {
             .decoder(RoomEditorActionPacket::decode)
             .consumerMainThread(RoomEditorActionPacket::handle)
             .add();
+
+        CHANNEL.messageBuilder(RoomEditorUpdatePacket.class, packetId++, NetworkDirection.PLAY_TO_SERVER)
+            .encoder(RoomEditorUpdatePacket::encode)
+            .decoder(RoomEditorUpdatePacket::decode)
+            .consumerMainThread(RoomEditorUpdatePacket::handle)
+            .add();
+
+        CHANNEL.messageBuilder(RoomOverlayPacket.class, packetId++, NetworkDirection.PLAY_TO_CLIENT)
+            .encoder(RoomOverlayPacket::encode)
+            .decoder(RoomOverlayPacket::decode)
+            .consumerMainThread(RoomOverlayPacket::handle)
+            .add();
     }
 
     public static void openRoomEditor(ServerPlayer player, RoomConfig.Room room) {
@@ -44,5 +56,13 @@ public final class BloodPalaceNetwork {
 
     public static void sendToServer(RoomEditorActionPacket packet) {
         CHANNEL.sendToServer(packet);
+    }
+
+    public static void sendToServer(RoomEditorUpdatePacket packet) {
+        CHANNEL.sendToServer(packet);
+    }
+
+    public static void sendToPlayer(ServerPlayer player, RoomOverlayPacket packet) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), packet);
     }
 }

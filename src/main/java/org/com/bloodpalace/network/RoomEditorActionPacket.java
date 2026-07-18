@@ -8,7 +8,7 @@ import org.com.bloodpalace.util.RoomEditor;
 
 import java.util.function.Supplier;
 
-public record RoomEditorActionPacket(Action action, int x, int y, int z, String name) {
+public record RoomEditorActionPacket(Action action, int x, int y, int z, String name, RoomEditorState state) {
 
     public enum Action {
         MOVE,
@@ -19,23 +19,27 @@ public record RoomEditorActionPacket(Action action, int x, int y, int z, String 
     }
 
     public static RoomEditorActionPacket move(int x, int y, int z) {
-        return new RoomEditorActionPacket(Action.MOVE, x, y, z, "");
+        return new RoomEditorActionPacket(Action.MOVE, x, y, z, "", null);
     }
 
     public static RoomEditorActionPacket scale(int x, int y, int z) {
-        return new RoomEditorActionPacket(Action.SCALE, x, y, z, "");
+        return new RoomEditorActionPacket(Action.SCALE, x, y, z, "", null);
     }
 
     public static RoomEditorActionPacket rename(String name) {
-        return new RoomEditorActionPacket(Action.RENAME, 0, 0, 0, name);
+        return new RoomEditorActionPacket(Action.RENAME, 0, 0, 0, name, null);
     }
 
     public static RoomEditorActionPacket save() {
-        return new RoomEditorActionPacket(Action.SAVE, 0, 0, 0, "");
+        return new RoomEditorActionPacket(Action.SAVE, 0, 0, 0, "", null);
+    }
+
+    public static RoomEditorActionPacket save(RoomEditorState state) {
+        return new RoomEditorActionPacket(Action.SAVE, 0, 0, 0, "", state);
     }
 
     public static RoomEditorActionPacket cancel() {
-        return new RoomEditorActionPacket(Action.CANCEL, 0, 0, 0, "");
+        return new RoomEditorActionPacket(Action.CANCEL, 0, 0, 0, "", null);
     }
 
     public static void encode(RoomEditorActionPacket packet, FriendlyByteBuf buf) {
@@ -44,15 +48,29 @@ public record RoomEditorActionPacket(Action action, int x, int y, int z, String 
         buf.writeInt(packet.y);
         buf.writeInt(packet.z);
         buf.writeUtf(packet.name);
+        buf.writeBoolean(packet.state != null);
+        if (packet.state != null) {
+            packet.state.encode(buf);
+        }
     }
 
     public static RoomEditorActionPacket decode(FriendlyByteBuf buf) {
+        RoomEditorState state = null;
+        Action action = buf.readEnum(Action.class);
+        int x = buf.readInt();
+        int y = buf.readInt();
+        int z = buf.readInt();
+        String name = buf.readUtf();
+        if (buf.readBoolean()) {
+            state = RoomEditorState.decode(buf);
+        }
         return new RoomEditorActionPacket(
-            buf.readEnum(Action.class),
-            buf.readInt(),
-            buf.readInt(),
-            buf.readInt(),
-            buf.readUtf());
+            action,
+            x,
+            y,
+            z,
+            name,
+            state);
     }
 
     public static void handle(RoomEditorActionPacket packet, Supplier<NetworkEvent.Context> contextSupplier) {
@@ -69,7 +87,13 @@ public record RoomEditorActionPacket(Action action, int x, int y, int z, String 
                 case MOVE -> RoomEditor.move(player, packet.x, packet.y, packet.z);
                 case SCALE -> RoomEditor.scale(player, packet.x, packet.y, packet.z);
                 case RENAME -> RoomEditor.rename(player, packet.name);
-                case SAVE -> RoomEditor.save(player);
+                case SAVE -> {
+                    if (packet.state != null) {
+                        RoomEditor.save(player, packet.state);
+                    } else {
+                        RoomEditor.save(player);
+                    }
+                }
                 case CANCEL -> RoomEditor.cancel(player);
             }
         });

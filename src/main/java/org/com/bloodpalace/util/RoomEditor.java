@@ -6,6 +6,7 @@ import net.minecraft.server.level.ServerPlayer;
 import org.com.bloodpalace.config.RoomConfig;
 import org.com.bloodpalace.entity.RoomCoreEntity;
 import org.com.bloodpalace.network.BloodPalaceNetwork;
+import org.com.bloodpalace.network.RoomEditorState;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -107,9 +108,62 @@ public final class RoomEditor {
         return 1;
     }
 
+    public static int update(ServerPlayer player, RoomEditorState state) {
+        Session session = completeSession(player);
+        if (session == null) return 0;
+        return applyState(player, session, state, true) ? 1 : 0;
+    }
+
+    public static int save(ServerPlayer player, RoomEditorState state) {
+        Session session = completeSession(player);
+        if (session == null) return 0;
+        if (!applyState(player, session, state, false)) return 0;
+        return saveSession(player, session);
+    }
+
     public static int save(ServerPlayer player) {
         Session session = completeSession(player);
         if (session == null) return 0;
+        return saveSession(player, session);
+    }
+
+    private static boolean applyState(ServerPlayer player, Session session, RoomEditorState state, boolean reopenScreen) {
+        String cleanId = cleanId(state.roomId());
+        String cleanName = state.name().trim();
+        if (cleanId.isEmpty()) {
+            player.sendSystemMessage(Component.literal("\u00a7cRoom id cannot be empty."));
+            if (reopenScreen) syncScreen(player, session);
+            return false;
+        }
+        if (cleanName.isEmpty()) {
+            cleanName = cleanId;
+        }
+        if (!cleanId.equals(session.roomId)
+                && !cleanId.equals(session.originalRoomId)
+                && RoomConfig.get(currentDimensionId(player), cleanId).isPresent()) {
+            player.sendSystemMessage(Component.literal("\u00a7cRoom id already exists: " + cleanId));
+            if (reopenScreen) syncScreen(player, session);
+            return false;
+        }
+
+        Bounds bounds = Bounds.from(state);
+        if (!bounds.meetsMinimum()) {
+            player.sendSystemMessage(Component.literal("\u00a7cMinimum room size is X="
+                + MIN_LENGTH_X + ", Z=" + MIN_WIDTH_Z + ", Y=" + MIN_HEIGHT_Y + "."));
+            if (reopenScreen) syncScreen(player, session);
+            return false;
+        }
+
+        session.roomId = cleanId;
+        session.roomName = cleanName;
+        session.pos1 = new BlockPos(bounds.minX, bounds.minY, bounds.minZ);
+        session.pos2 = new BlockPos(bounds.maxX, bounds.maxY, bounds.maxZ);
+        syncEditingCore(player, session);
+        if (reopenScreen) syncScreen(player, session);
+        return true;
+    }
+
+    private static int saveSession(ServerPlayer player, Session session) {
         Bounds bounds = Bounds.from(session.pos1, session.pos2);
         if (!bounds.meetsMinimum()) {
             player.sendSystemMessage(Component.literal("\u00a7cMinimum room size is X="
@@ -118,6 +172,15 @@ public final class RoomEditor {
         }
 
         RoomConfig.Room room = session.toRoom();
+        if (!session.originalRoomId.equals(room.id)) {
+            try {
+                RoomConfig.delete(currentDimensionId(player), session.originalRoomId);
+            } catch (IOException e) {
+                player.sendSystemMessage(Component.literal("\u00a7cFailed to update old room config: " + RoomConfig.getPath()));
+                return 0;
+            }
+            RoomCoreManager.remove(player.serverLevel(), session.originalRoomId);
+        }
         if (!saveRoom(player, room)) return 0;
 
         RoomCoreManager.upsert(player.serverLevel(), room, false);
@@ -194,7 +257,11 @@ public final class RoomEditor {
 
     private static void syncEditingCore(ServerPlayer player, Session session) {
         if (!session.isComplete()) return;
+        if (session.lastSyncedRoomId != null && !session.lastSyncedRoomId.equals(session.roomId)) {
+            RoomCoreManager.remove(player.serverLevel(), session.lastSyncedRoomId);
+        }
         RoomCoreManager.upsert(player.serverLevel(), session.toRoom(), true);
+        session.lastSyncedRoomId = session.roomId;
     }
 
     private static void beginSession(ServerPlayer player, Session session) {
@@ -211,11 +278,14 @@ public final class RoomEditor {
     }
 
     private static void restorePersistedCore(ServerPlayer player, Session session) {
-        Optional<RoomConfig.Room> saved = RoomConfig.get(currentDimensionId(player), session.roomId);
+        if (session.lastSyncedRoomId != null && !session.lastSyncedRoomId.equals(session.originalRoomId)) {
+            RoomCoreManager.remove(player.serverLevel(), session.lastSyncedRoomId);
+        }
+        Optional<RoomConfig.Room> saved = RoomConfig.get(currentDimensionId(player), session.originalRoomId);
         if (saved.isPresent()) {
             RoomCoreManager.upsert(player.serverLevel(), saved.get(), false);
         } else {
-            RoomCoreManager.remove(player.serverLevel(), session.roomId);
+            RoomCoreManager.remove(player.serverLevel(), session.originalRoomId);
         }
     }
 
@@ -272,6 +342,10 @@ public final class RoomEditor {
         return pos.getX() + " " + pos.getY() + " " + pos.getZ();
     }
 
+    private static String cleanId(String value) {
+        return value == null ? "" : value.trim().replace(' ', '_');
+    }
+
     private static RoomConfig.Room defaultRoom(String roomId, BlockPos center) {
         int minX = center.getX() - MIN_LENGTH_X / 2;
         int minY = center.getY() - MIN_HEIGHT_Y / 2;
@@ -303,12 +377,15 @@ public final class RoomEditor {
     }
 
     private static final class Session {
-        private final String roomId;
+        private final String originalRoomId;
+        private String roomId;
+        private String lastSyncedRoomId;
         private String roomName;
         private BlockPos pos1;
         private BlockPos pos2;
 
         private Session(String roomId, String roomName, BlockPos pos1, BlockPos pos2) {
+            this.originalRoomId = roomId;
             this.roomId = roomId;
             this.roomName = roomName;
             this.pos1 = pos1;
@@ -338,6 +415,16 @@ public final class RoomEditor {
     }
 
     private record Bounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        private static Bounds from(RoomEditorState state) {
+            return new Bounds(
+                Math.min(state.minX(), state.maxX()),
+                Math.min(state.minY(), state.maxY()),
+                Math.min(state.minZ(), state.maxZ()),
+                Math.max(state.minX(), state.maxX()),
+                Math.max(state.minY(), state.maxY()),
+                Math.max(state.minZ(), state.maxZ()));
+        }
+
         private static Bounds from(BlockPos a, BlockPos b) {
             return new Bounds(
                 Math.min(a.getX(), b.getX()),

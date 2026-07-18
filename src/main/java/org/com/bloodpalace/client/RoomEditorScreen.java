@@ -1,61 +1,86 @@
 package org.com.bloodpalace.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import net.minecraft.Util;
+import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.com.bloodpalace.network.BloodPalaceNetwork;
 import org.com.bloodpalace.network.RoomEditorActionPacket;
 import org.com.bloodpalace.network.RoomEditorState;
+import org.com.bloodpalace.network.RoomEditorUpdatePacket;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
 public class RoomEditorScreen extends Screen {
 
-    private static final int MIN_PANEL_WIDTH = 332;
-    private static final int MAX_PANEL_WIDTH = 508;
-    private static final int MAX_PANEL_HEIGHT = 316;
-    private static final int BUTTON_HEIGHT = 22;
-    private static final int STEP_MIN = 1;
-    private static final int STEP_MAX = 64;
+    private static final int MIN_SIZE_X = 10;
+    private static final int MIN_SIZE_Y = 5;
+    private static final int MIN_SIZE_Z = 10;
+    private static final int MAX_SIZE = 192;
+    private static final int POS_RANGE = 128;
+
+    private static final int TAB_HEIGHT = 18;
+    private static final int BUTTON_HEIGHT = 16;
+    private static final int FIELD_HEIGHT = 16;
+    private static final int ROW_GAP = 4;
+    private static final int BODY_PAD = 5;
+
+    private static final int COLOR_ACCENT = 0xFFE3B34B;
+    private static final int COLOR_DANGER = 0xFFB33645;
+    private static final int COLOR_TEXT = 0xFFFFE9D6;
+    private static final int COLOR_TEXT_SOFT = 0xFFE5CFC1;
+    private static final int COLOR_LABEL = 0xFFC9B1A4;
+    private static final int COLOR_MUTED = 0xFF8E7D76;
+    private static final int COLOR_PANEL = 0x960B0808;
+    private static final int COLOR_PANEL_LINE = 0x846B242D;
+    private static final int COLOR_ROW = 0x64130E0E;
+    private static final int COLOR_ROW_HOT = 0x851B1212;
+    private static final int COLOR_FIELD = 0x7016100F;
+    private static final int COLOR_FIELD_ACTIVE = 0xA8271716;
 
     private final List<Hotspot> hotspots = new ArrayList<>();
 
     private RoomEditorState state;
-    private EditBox nameEdit;
-    private EditBox stepEdit;
+    private Tab activeTab = Tab.INFO;
+    private TextField activeField;
+    private Slider activeSlider;
+    private String editBuffer = "";
+    private CameraType previousCameraType;
     private Hotspot hovered;
+    private long lastRenderMs;
+    private float panelAlpha;
+    private float scroll;
+    private float targetScroll;
+    private boolean closing;
+
+    private final int baseCenterX;
+    private final int baseCenterY;
+    private final int baseCenterZ;
 
     public RoomEditorScreen(RoomEditorState state) {
         super(Component.literal("Room Core Editor"));
-        this.state = state;
-        RoomHighlightRenderer.setEditingState(state);
+        this.state = normalize(state);
+        this.baseCenterX = centerX(this.state);
+        this.baseCenterY = centerY(this.state);
+        this.baseCenterZ = centerZ(this.state);
+        RoomHighlightRenderer.setEditingState(this.state);
     }
 
     @Override
     protected void init() {
-        Layout layout = layout();
-
-        nameEdit = new EditBox(font, layout.nameX, layout.nameY + 6, layout.nameWidth, 16,
-            Component.literal("Name"));
-        nameEdit.setMaxLength(64);
-        nameEdit.setBordered(false);
-        nameEdit.setTextColor(0xF3FBFF);
-        nameEdit.setTextColorUneditable(0x8A9AA0);
-        nameEdit.setValue(state.name());
-        addRenderableWidget(nameEdit);
-
-        stepEdit = new EditBox(font, layout.stepInputX, layout.stepY + 6, layout.stepInputWidth, 16,
-            Component.literal("Step"));
-        stepEdit.setMaxLength(3);
-        stepEdit.setBordered(false);
-        stepEdit.setTextColor(0xF3FBFF);
-        stepEdit.setValue("1");
-        addRenderableWidget(stepEdit);
+        if (minecraft != null) {
+            if (previousCameraType == null) {
+                previousCameraType = minecraft.options.getCameraType();
+            }
+            minecraft.options.setCameraType(CameraType.FIRST_PERSON);
+        }
+        lastRenderMs = 0L;
+        panelAlpha = 0.0F;
+        clampScroll(layout());
     }
 
     public boolean isEditing(String roomId) {
@@ -63,73 +88,151 @@ public class RoomEditorScreen extends Screen {
     }
 
     public void updateState(RoomEditorState state) {
-        this.state = state;
-        RoomHighlightRenderer.setEditingState(state);
-        if (nameEdit != null && !nameEdit.isFocused()) {
-            nameEdit.setValue(state.name());
-        }
-    }
-
-    @Override
-    public void tick() {
-        if (nameEdit != null) nameEdit.tick();
-        if (stepEdit != null) stepEdit.tick();
+        this.state = normalize(state);
+        RoomHighlightRenderer.setEditingState(this.state);
+        clampScroll(layout());
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (nameEdit != null && nameEdit.isFocused()
-                && (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER)) {
-            applyName();
+        if (activeField != null) {
+            if (keyCode == InputConstants.KEY_S && Screen.hasControlDown()) {
+                saveAndClose();
+                return true;
+            }
+            if (keyCode == InputConstants.KEY_ESCAPE) {
+                activeField = null;
+                editBuffer = "";
+                return true;
+            }
+            if (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER) {
+                commitActiveField(true);
+                return true;
+            }
+            if (keyCode == InputConstants.KEY_BACKSPACE && !editBuffer.isEmpty()) {
+                editBuffer = editBuffer.substring(0, editBuffer.length() - 1);
+                return true;
+            }
+            if (keyCode == InputConstants.KEY_DELETE) {
+                editBuffer = "";
+                return true;
+            }
             return true;
         }
-        if (stepEdit != null && stepEdit.isFocused()
-                && (keyCode == InputConstants.KEY_RETURN || keyCode == InputConstants.KEY_NUMPADENTER)) {
-            setStep(step());
+
+        if (keyCode == InputConstants.KEY_ESCAPE) {
+            cancelAndClose();
+            return true;
+        }
+        if (keyCode == InputConstants.KEY_S && Screen.hasControlDown()) {
+            saveAndClose();
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        if (isInsidePanel(mouseX, mouseY)) {
-            setStep(step() + (delta > 0 ? 1 : -1));
-            return true;
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (activeField == null) return super.charTyped(codePoint, modifiers);
+        if (activeField.accepts(codePoint) && editBuffer.length() < activeField.maxLength()) {
+            editBuffer += codePoint;
         }
-        return super.mouseScrolled(mouseX, mouseY, delta);
+        return true;
     }
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0) {
-            rebuildHotspots(mouseX, mouseY);
-            for (Hotspot hotspot : hotspots) {
-                if (hotspot.enabled && hotspot.contains(mouseX, mouseY)) {
-                    activate(hotspot.action);
-                    return true;
+        if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
+
+        Layout layout = layout();
+        rebuildHotspots(layout, mouseX, mouseY);
+        for (Hotspot hotspot : hotspots) {
+            if (!hotspot.contains(mouseX, mouseY)) continue;
+            if (hotspot.isBodyControl() && !layout.bodyContains(mouseX, mouseY)) continue;
+
+            if (hotspot.kind == Kind.FIELD) {
+                if (activeField != hotspot.field) {
+                    commitActiveField(true);
+                    beginField(hotspot.field);
+                }
+                return true;
+            }
+
+            if (hotspot.kind == Kind.BUTTON && hotspot.action == Action.SAVE) {
+                saveAndClose();
+                return true;
+            }
+            if (hotspot.kind == Kind.BUTTON && hotspot.action == Action.CANCEL) {
+                cancelAndClose();
+                return true;
+            }
+
+            commitActiveField(true);
+            switch (hotspot.kind) {
+                case TAB -> {
+                    activeTab = hotspot.tab;
+                    scroll = 0.0F;
+                    targetScroll = 0.0F;
+                }
+                case BUTTON -> activate(hotspot.action);
+                case SLIDER -> {
+                    activeSlider = hotspot.slider;
+                    applySlider(mouseX, hotspot);
+                }
+                case FIELD -> {
                 }
             }
+            return true;
         }
-        return super.mouseClicked(mouseX, mouseY, button);
+
+        commitActiveField(true);
+        return true;
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (button == 0 && activeSlider != null) {
+            Layout layout = layout();
+            rebuildHotspots(layout, mouseX, mouseY);
+            Hotspot slider = findSlider(activeSlider);
+            if (slider != null) {
+                applySlider(mouseX, slider);
+                return true;
+            }
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0 && activeSlider != null) {
+            activeSlider = null;
+            sendUpdate();
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        Layout layout = layout();
+        if (!layout.bodyContains(mouseX, mouseY)) return super.mouseScrolled(mouseX, mouseY, delta);
+        targetScroll = clamp(targetScroll - (float) delta * 30.0F, 0.0F, maxScroll(layout));
+        return true;
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        renderBackground(graphics);
-        rebuildHotspots(mouseX, mouseY);
-
+        tickAnimation();
         Layout layout = layout();
-        syncEditBoxes(layout);
+        clampScroll(layout);
+        rebuildHotspots(layout, mouseX, mouseY);
+        drawPreviewOverlay(graphics, layout);
+        drawConsole(graphics, layout);
+    }
 
-        drawPanel(graphics, layout.left, layout.top, layout.panelWidth, layout.panelHeight);
-        drawHeader(graphics, layout);
-        drawMetrics(graphics, layout);
-        drawFields(graphics, layout);
-        drawHotspots(graphics);
-        drawFooter(graphics, layout);
-
-        super.render(graphics, mouseX, mouseY, partialTick);
+    @Override
+    public void renderBackground(GuiGraphics graphics) {
     }
 
     @Override
@@ -137,454 +240,918 @@ public class RoomEditorScreen extends Screen {
         return false;
     }
 
-    private void rebuildHotspots(double mouseX, double mouseY) {
+    @Override
+    public void onClose() {
+        if (!closing) cancelAndClose();
+    }
+
+    @Override
+    public void removed() {
+        restoreCamera();
+        super.removed();
+    }
+
+    private void rebuildHotspots(Layout layout, double mouseX, double mouseY) {
         hotspots.clear();
-        Layout layout = layout();
-        boolean canApplyName = nameEdit != null
-            && !nameEdit.getValue().trim().isEmpty()
-            && !nameEdit.getValue().trim().equals(state.name());
-
-        hotspots.add(new Hotspot(Action.APPLY_NAME, "Apply", layout.applyX, layout.nameY, layout.applyWidth,
-            BUTTON_HEIGHT, canApplyName, Tone.ACCENT));
-        hotspots.add(new Hotspot(Action.STEP_DOWN, "-", layout.stepMinusX, layout.stepY, layout.smallButtonWidth,
-            BUTTON_HEIGHT, true, Tone.NEUTRAL));
-        hotspots.add(new Hotspot(Action.STEP_UP, "+", layout.stepPlusX, layout.stepY, layout.smallButtonWidth,
-            BUTTON_HEIGHT, true, Tone.NEUTRAL));
-        hotspots.add(new Hotspot(Action.STEP_1, "1", layout.stepPresetX, layout.stepY, layout.presetButtonWidth,
-            BUTTON_HEIGHT, true, Tone.NEUTRAL));
-        hotspots.add(new Hotspot(Action.STEP_5, "5", layout.stepPresetX + layout.presetButtonWidth + layout.gap,
-            layout.stepY, layout.presetButtonWidth, BUTTON_HEIGHT, true, Tone.NEUTRAL));
-        hotspots.add(new Hotspot(Action.STEP_10, "10", layout.stepPresetX + (layout.presetButtonWidth + layout.gap) * 2,
-            layout.stepY, layout.presetButtonWidth + 4, BUTTON_HEIGHT, true, Tone.NEUTRAL));
-
-        addAxisRow(layout.axisLeft, layout.moveY, layout.axisButtonWidth, layout.gap, true);
-        addAxisRow(layout.axisLeft, layout.resizeY, layout.axisButtonWidth, layout.gap, false);
-
-        hotspots.add(new Hotspot(Action.SAVE, "Save", layout.saveX, layout.footerButtonY, layout.footerButtonWidth,
-            BUTTON_HEIGHT, true, Tone.ACCENT));
-        hotspots.add(new Hotspot(Action.CANCEL, "Cancel", layout.cancelX, layout.footerButtonY,
-            layout.footerButtonWidth, BUTTON_HEIGHT, true, Tone.DANGER));
-        hotspots.add(new Hotspot(Action.CLOSE, "Close", layout.closeX, layout.footerButtonY,
-            layout.footerButtonWidth, BUTTON_HEIGHT, true, Tone.NEUTRAL));
-
         hovered = null;
+
+        int actionW = layout.narrow ? 44 : 50;
+        int actionY = layout.titleY - 2;
+        hotspots.add(Hotspot.button(Action.CANCEL, layout.contentRight - actionW, actionY,
+            actionW, BUTTON_HEIGHT, "Cancel"));
+        hotspots.add(Hotspot.button(Action.SAVE, layout.contentRight - actionW * 2 - 5, actionY,
+            actionW, BUTTON_HEIGHT, "Save"));
+
+        int tabW = Math.max(36, (layout.contentW - 10) / 3);
+        int tabX = layout.contentX;
+        for (Tab tab : Tab.values()) {
+            hotspots.add(Hotspot.tab(tab, tabX, layout.tabY, tabW, TAB_HEIGHT));
+            tabX += tabW + 5;
+        }
+
+        int contentY = layout.bodyY + BODY_PAD - Math.round(scroll);
+        if (activeTab == Tab.INFO) {
+            addInfoHotspots(layout, contentY);
+        } else {
+            addControlHotspots(layout, contentY, activeTab == Tab.SIZE);
+        }
+
         for (Hotspot hotspot : hotspots) {
-            if (hotspot.enabled && hotspot.contains(mouseX, mouseY)) {
-                hovered = hotspot;
-                break;
-            }
+            if (!hotspot.contains(mouseX, mouseY)) continue;
+            if (hotspot.isBodyControl() && !layout.bodyContains(mouseX, mouseY)) continue;
+            hovered = hotspot;
+            break;
         }
     }
 
-    private void addAxisRow(int x, int y, int width, int gap, boolean move) {
-        addAxisButton(x, y, width, move ? Action.MOVE_X_NEG : Action.SCALE_X_NEG, "X-");
-        addAxisButton(x + (width + gap), y, width, move ? Action.MOVE_X_POS : Action.SCALE_X_POS, "X+");
-        addAxisButton(x + (width + gap) * 2, y, width, move ? Action.MOVE_Y_NEG : Action.SCALE_Y_NEG, "Y-");
-        addAxisButton(x + (width + gap) * 3, y, width, move ? Action.MOVE_Y_POS : Action.SCALE_Y_POS, "Y+");
-        addAxisButton(x + (width + gap) * 4, y, width, move ? Action.MOVE_Z_NEG : Action.SCALE_Z_NEG, "Z-");
-        addAxisButton(x + (width + gap) * 5, y, width, move ? Action.MOVE_Z_POS : Action.SCALE_Z_POS, "Z+");
+    private void addInfoHotspots(Layout layout, int y) {
+        int rowH = infoRowHeight(layout);
+        int rowY = y + 18;
+        hotspots.add(Hotspot.field(TextField.ROOM_ID, infoFieldRect(layout, rowY, rowH)));
+        hotspots.add(Hotspot.field(TextField.ROOM_NAME, infoFieldRect(layout, rowY + rowH + ROW_GAP, rowH)));
     }
 
-    private void addAxisButton(int x, int y, int width, Action action, String label) {
-        hotspots.add(new Hotspot(action, label, x, y, width, BUTTON_HEIGHT, true, Tone.NEUTRAL));
-    }
-
-    private void activate(Action action) {
-        switch (action) {
-            case APPLY_NAME -> applyName();
-            case STEP_DOWN -> setStep(step() - 1);
-            case STEP_UP -> setStep(step() + 1);
-            case STEP_1 -> setStep(1);
-            case STEP_5 -> setStep(5);
-            case STEP_10 -> setStep(10);
-            case MOVE_X_NEG -> move(-1, 0, 0);
-            case MOVE_X_POS -> move(1, 0, 0);
-            case MOVE_Y_NEG -> move(0, -1, 0);
-            case MOVE_Y_POS -> move(0, 1, 0);
-            case MOVE_Z_NEG -> move(0, 0, -1);
-            case MOVE_Z_POS -> move(0, 0, 1);
-            case SCALE_X_NEG -> scale(-1, 0, 0);
-            case SCALE_X_POS -> scale(1, 0, 0);
-            case SCALE_Y_NEG -> scale(0, -1, 0);
-            case SCALE_Y_POS -> scale(0, 1, 0);
-            case SCALE_Z_NEG -> scale(0, 0, -1);
-            case SCALE_Z_POS -> scale(0, 0, 1);
-            case SAVE -> {
-                applyNameIfChanged();
-                BloodPalaceNetwork.sendToServer(RoomEditorActionPacket.save());
-                RoomHighlightRenderer.clearEditingState();
-                onClose();
-            }
-            case CANCEL -> {
-                BloodPalaceNetwork.sendToServer(RoomEditorActionPacket.cancel());
-                RoomHighlightRenderer.clearEditingState();
-                onClose();
-            }
-            case CLOSE -> onClose();
+    private void addControlHotspots(Layout layout, int y, boolean sizePage) {
+        Axis[] axes = sizePage
+            ? new Axis[] {Axis.X, Axis.Y, Axis.Z, Axis.ALL}
+            : new Axis[] {Axis.X, Axis.Y, Axis.Z};
+        int rowH = controlRowHeight(layout);
+        int rowY = y + 18;
+        for (int i = 0; i < axes.length; i++) {
+            Axis axis = axes[i];
+            Rect row = contentRow(layout, rowY + i * (rowH + ROW_GAP), rowH);
+            ControlRects rects = controlRects(layout, row);
+            hotspots.add(Hotspot.field(field(axis, sizePage), rects.field));
+            hotspots.add(Hotspot.slider(slider(axis, sizePage), rects.slider));
+            hotspots.add(Hotspot.button(action(axis, false, sizePage), rects.minus, "-"));
+            hotspots.add(Hotspot.button(action(axis, true, sizePage), rects.plus, "+"));
         }
     }
 
-    private void move(int x, int y, int z) {
-        int currentStep = step();
-        BloodPalaceNetwork.sendToServer(RoomEditorActionPacket.move(x * currentStep, y * currentStep, z * currentStep));
+    private void drawPreviewOverlay(GuiGraphics graphics, Layout layout) {
+        graphics.fill(layout.panelX - 1, layout.panelY, layout.panelX, layout.panelY + layout.panelH,
+            0xCC2A1114);
+
+        int badgeW = layout.panelX - layout.margin * 2;
+        badgeW = Math.min(badgeW, layout.narrow ? 240 : 320);
+        if (badgeW <= 80) return;
+        int badgeX = layout.margin;
+        int badgeY = layout.margin;
+        drawPanel(graphics, badgeX, badgeY, badgeW, 26, 0x82110C0C, 0x88442A27);
+        drawAccentEdge(graphics, badgeX, badgeY, 26, COLOR_ACCENT);
+        graphics.drawString(font, "Room Preview", badgeX + 10, badgeY + 4, COLOR_TEXT, false);
+        String stats = state.width() + " x " + state.height() + " x " + state.depth();
+        graphics.drawString(font, stats, badgeX + badgeW - 8 - font.width(stats), badgeY + 15,
+            COLOR_MUTED, false);
     }
 
-    private void scale(int x, int y, int z) {
-        int currentStep = step();
-        BloodPalaceNetwork.sendToServer(RoomEditorActionPacket.scale(x * currentStep, y * currentStep, z * currentStep));
-    }
+    private void drawConsole(GuiGraphics graphics, Layout layout) {
+        drawPanel(graphics, layout.panelX, layout.panelY, layout.panelW, layout.panelH,
+            alpha(COLOR_PANEL), alpha(COLOR_PANEL_LINE));
+        drawAccentEdge(graphics, layout.panelX, layout.panelY, layout.panelH, alpha(COLOR_ACCENT));
 
-    private void drawPanel(GuiGraphics graphics, int left, int top, int panelWidth, int panelHeight) {
-        graphics.fill(0, 0, width, height, 0x6A020406);
-        graphics.fill(left - 1, top - 1, left + panelWidth + 1, top + panelHeight + 1, 0xA0061013);
-        graphics.fill(left, top, left + panelWidth, top + panelHeight, 0xF00B1014);
-        graphics.fill(left, top, left + panelWidth, top + 40, 0xFA111A20);
-        graphics.fill(left, top + 40, left + panelWidth, top + 41, 0xFF25D0D8);
-        graphics.fill(left + 1, top + 1, left + panelWidth - 1, top + 2, 0x663FE5D7);
-        graphics.renderOutline(left, top, panelWidth, panelHeight, 0xFF2C5660);
+        drawHeader(graphics, layout);
+        drawBody(graphics, layout);
+        drawFooter(graphics, layout);
     }
 
     private void drawHeader(GuiGraphics graphics, Layout layout) {
-        graphics.drawString(font, "Room Core", layout.contentLeft, layout.top + 12, 0xF6FBFF, false);
-        graphics.drawString(font, "editor", layout.contentLeft + 60, layout.top + 12, 0x718B91, false);
-        String sizeText = "UI " + layout.panelWidth + "x" + layout.panelHeight
-            + " / Window " + width + "x" + height;
-        graphics.drawString(font, trimToWidth(sizeText, layout.contentWidth - 8),
-            layout.contentLeft, layout.top + 28, 0x586C72, false);
+        String title = "Room Core Editor";
+        int actionLeft = findAction(Action.SAVE).x - 8;
+        graphics.drawString(font, trim(title, Math.max(0, actionLeft - layout.contentX)),
+            layout.contentX, layout.titleY + 3, COLOR_TEXT, false);
 
-        String id = state.roomId();
-        int idWidth = Math.min(layout.panelWidth - 142, font.width(id) + 20);
-        int idLeft = layout.contentRight - idWidth;
-        drawSoftRect(graphics, idLeft, layout.top + 9, idWidth, 18, 0x5524A6B2, 0xAA2ADCE7);
-        graphics.drawString(font, trimToWidth(id, idWidth - 14), idLeft + 10, layout.top + 14, 0xB9F7FF, false);
-    }
+        drawButton(graphics, findAction(Action.SAVE));
+        drawButton(graphics, findAction(Action.CANCEL));
 
-    private void drawMetrics(GuiGraphics graphics, Layout layout) {
-        if (layout.compact) {
-            drawCompactMetrics(graphics, layout);
-            return;
-        }
-        drawMetric(graphics, layout.contentLeft, layout.metricY, layout.metricWidth, "X",
-            Integer.toString(state.width()), 0xFF25D0D8);
-        drawMetric(graphics, layout.contentLeft + layout.metricWidth + layout.gap, layout.metricY,
-            layout.metricWidth, "Y", Integer.toString(state.height()), 0xFFE2B54E);
-        drawMetric(graphics, layout.contentLeft + (layout.metricWidth + layout.gap) * 2, layout.metricY,
-            layout.metricWidth, "Z", Integer.toString(state.depth()), 0xFFE16978);
-
-        graphics.drawString(font, "Center", layout.contentLeft, layout.centerY, 0x6F858B, false);
-        graphics.drawString(font, trimToWidth(centerText(), layout.contentWidth - 58),
-            layout.contentLeft + 54, layout.centerY, 0xC9E7EA, false);
-    }
-
-    private void drawCompactMetrics(GuiGraphics graphics, Layout layout) {
-        drawSoftRect(graphics, layout.contentLeft, layout.metricY, layout.contentWidth, 22,
-            0xD0131A1F, 0x66465C63);
-        String size = "Size  X " + state.width() + "   Y " + state.height() + "   Z " + state.depth();
-        graphics.drawString(font, trimToWidth(size, layout.contentWidth / 2 - 8),
-            layout.contentLeft + 10, layout.metricY + 7, 0xE8F8FF, false);
-        graphics.drawString(font, trimToWidth("Center  " + centerText(), layout.contentWidth / 2 - 8),
-            layout.contentLeft + layout.contentWidth / 2 + 4, layout.metricY + 7, 0x9FC1C7, false);
-    }
-
-    private void drawMetric(GuiGraphics graphics, int x, int y, int width, String label, String value, int color) {
-        drawSoftRect(graphics, x, y, width, 28, 0xD0131A1F, 0x6634484F);
-        graphics.fill(x, y, x + 3, y + 28, color);
-        graphics.drawString(font, label, x + 10, y + 6, 0x758D93, false);
-        graphics.drawString(font, value, x + width - font.width(value) - 10, y + 6, 0xF2FBFF, false);
-    }
-
-    private void drawFields(GuiGraphics graphics, Layout layout) {
-        graphics.drawString(font, "Name", layout.contentLeft, layout.nameY + 7, 0xA8BBC0, false);
-        drawSoftRect(graphics, layout.nameX - 4, layout.nameY, layout.nameWidth + 8, BUTTON_HEIGHT,
-            0xD0131A1F, 0x66465C63);
-
-        graphics.drawString(font, "Step", layout.contentLeft, layout.stepY + 7, 0xA8BBC0, false);
-        drawSoftRect(graphics, layout.stepInputX - 4, layout.stepY, layout.stepInputWidth + 8, BUTTON_HEIGHT,
-            0xD0131A1F, 0x66465C63);
-
-        if (layout.compact) {
-            graphics.drawString(font, "Move", layout.contentLeft, layout.moveY + 7, 0x6F858B, false);
-            graphics.drawString(font, "Resize", layout.contentLeft, layout.resizeY + 7, 0x6F858B, false);
-        } else {
-            graphics.drawString(font, "Move", layout.contentLeft, layout.moveY - 13, 0x6F858B, false);
-            graphics.drawString(font, "Resize", layout.contentLeft, layout.resizeY - 13, 0x6F858B, false);
-        }
-    }
-
-    private void drawHotspots(GuiGraphics graphics) {
         for (Hotspot hotspot : hotspots) {
-            drawButton(graphics, hotspot, hotspot == hovered);
+            if (hotspot.kind != Kind.TAB) continue;
+            drawTab(graphics, hotspot);
+        }
+    }
+
+    private void drawBody(GuiGraphics graphics, Layout layout) {
+        graphics.fill(layout.bodyX, layout.bodyY, layout.bodyRight, layout.bodyBottom, 0x40070505);
+        graphics.fill(layout.bodyX, layout.bodyY, layout.bodyRight, layout.bodyY + 1, 0x664A3730);
+
+        graphics.enableScissor(layout.bodyX, layout.bodyY, layout.bodyRight, layout.bodyBottom);
+        int contentY = layout.bodyY + BODY_PAD - Math.round(scroll);
+        if (activeTab == Tab.INFO) {
+            drawInfoPage(graphics, layout, contentY);
+        } else {
+            drawControlPage(graphics, layout, contentY, activeTab == Tab.SIZE);
+        }
+        graphics.disableScissor();
+
+        drawScrollbar(graphics, layout);
+    }
+
+    private void drawInfoPage(GuiGraphics graphics, Layout layout, int y) {
+        drawSectionTitle(graphics, layout.bodyX + 8, y + 6, "Room Information");
+
+        int rowH = infoRowHeight(layout);
+        int rowY = y + 18;
+        drawInfoRow(graphics, layout, rowY, rowH, "Room ID", TextField.ROOM_ID, state.roomId());
+        drawInfoRow(graphics, layout, rowY + rowH + ROW_GAP, rowH, "Name", TextField.ROOM_NAME, state.name());
+    }
+
+    private void drawInfoRow(GuiGraphics graphics, Layout layout, int y, int rowH,
+            String label, TextField field, String value) {
+        Rect row = contentRow(layout, y, rowH);
+        drawPanel(graphics, row.x, row.y, row.w, row.h, rowFill(row), 0x6643312D);
+        drawAccentEdge(graphics, row.x, row.y, row.h, COLOR_ACCENT);
+        graphics.drawString(font, label, row.x + 8, row.y + 7, COLOR_LABEL, false);
+        drawField(graphics, findField(field), activeField == field ? editBuffer : value);
+    }
+
+    private void drawControlPage(GuiGraphics graphics, Layout layout, int y, boolean sizePage) {
+        drawSectionTitle(graphics, layout.bodyX + 8, y + 6, sizePage ? "Room Size" : "Room Position");
+
+        Axis[] axes = sizePage
+            ? new Axis[] {Axis.X, Axis.Y, Axis.Z, Axis.ALL}
+            : new Axis[] {Axis.X, Axis.Y, Axis.Z};
+        int rowH = controlRowHeight(layout);
+        int rowY = y + 18;
+        for (int i = 0; i < axes.length; i++) {
+            Axis axis = axes[i];
+            Rect row = contentRow(layout, rowY + i * (rowH + ROW_GAP), rowH);
+            drawControlRow(graphics, layout, row, axis, sizePage);
+        }
+    }
+
+    private void drawControlRow(GuiGraphics graphics, Layout layout, Rect row, Axis axis, boolean sizePage) {
+        ControlRects rects = controlRects(layout, row);
+        drawPanel(graphics, row.x, row.y, row.w, row.h, rowFill(row), 0x6643312D);
+        drawAccentEdge(graphics, row.x, row.y, row.h, colorForAxis(axis));
+
+        int labelY = row.y + 7;
+        graphics.drawString(font, axisLabel(axis, sizePage), row.x + 8, labelY, COLOR_LABEL, false);
+
+        TextField field = field(axis, sizePage);
+        drawField(graphics, findField(field),
+            activeField == field ? editBuffer : Integer.toString(value(axis, sizePage)));
+        drawSlider(graphics, findSlider(slider(axis, sizePage)));
+        drawButton(graphics, findAction(action(axis, false, sizePage)));
+        drawButton(graphics, findAction(action(axis, true, sizePage)));
+
+        if (!layout.narrow) {
+            String range = sizePage ? minSize(axis) + "-" + MAX_SIZE : "center +/- " + POS_RANGE;
+            graphics.drawString(font, range, rects.slider.x, rects.slider.y - 9, COLOR_MUTED, false);
         }
     }
 
     private void drawFooter(GuiGraphics graphics, Layout layout) {
-        String bounds = "Bounds  " + boundsText();
-        int boundsWidth = layout.saveX - layout.contentLeft - layout.gap;
-        if (boundsWidth > 28) {
-            graphics.drawString(font, trimToWidth(bounds, boundsWidth), layout.contentLeft,
-                layout.footerButtonY + 7, 0x72878D, false);
-        }
-    }
-
-    private void drawButton(GuiGraphics graphics, Hotspot hotspot, boolean hot) {
-        int fill = hotspot.tone.fill;
-        int line = hotspot.tone.line;
-        int text = hotspot.enabled ? hotspot.tone.text : 0x58656A;
-        if (!hotspot.enabled) {
-            fill = 0x5512161A;
-            line = 0x44303A40;
-        } else if (hot) {
-            fill = hotspot.tone.hoverFill;
-            line = hotspot.tone.hoverLine;
-        }
-        drawSoftRect(graphics, hotspot.x, hotspot.y, hotspot.width, hotspot.height, fill, line);
-        int textX = hotspot.x + (hotspot.width - font.width(hotspot.label)) / 2;
-        int textY = hotspot.y + (hotspot.height - 8) / 2;
-        graphics.drawString(font, hotspot.label, textX, textY, text, false);
-    }
-
-    private void drawSoftRect(GuiGraphics graphics, int x, int y, int width, int height, int fill, int line) {
-        graphics.fill(x, y, x + width, y + height, fill);
-        graphics.fill(x, y, x + width, y + 1, line);
-        graphics.fill(x, y + height - 1, x + width, y + height, 0x66000000);
-        graphics.fill(x, y, x + 1, y + height, line);
-        graphics.fill(x + width - 1, y, x + width, y + height, 0x66000000);
-    }
-
-    private void applyName() {
-        if (nameEdit == null) return;
-        String name = nameEdit.getValue().trim();
-        if (name.isEmpty() || name.equals(state.name())) return;
-        BloodPalaceNetwork.sendToServer(RoomEditorActionPacket.rename(name));
-    }
-
-    private void applyNameIfChanged() {
-        if (nameEdit == null) return;
-        String name = nameEdit.getValue().trim();
-        if (!name.isEmpty() && !name.equals(state.name())) {
-            BloodPalaceNetwork.sendToServer(RoomEditorActionPacket.rename(name));
-        }
-    }
-
-    private int step() {
-        if (stepEdit == null) return STEP_MIN;
-        try {
-            int value = Integer.parseInt(stepEdit.getValue().trim());
-            return clampStep(value);
-        } catch (NumberFormatException e) {
-            setStep(STEP_MIN);
-            return STEP_MIN;
-        }
-    }
-
-    private void setStep(int value) {
-        if (stepEdit != null) {
-            stepEdit.setValue(Integer.toString(clampStep(value)));
-        }
-    }
-
-    private int clampStep(int value) {
-        return Math.max(STEP_MIN, Math.min(STEP_MAX, value));
-    }
-
-    private String boundsText() {
-        return state.minX() + " " + state.minY() + " " + state.minZ()
+        if (layout.footerH <= 0) return;
+        String bounds = "min/max " + state.minX() + " " + state.minY() + " " + state.minZ()
             + " -> " + state.maxX() + " " + state.maxY() + " " + state.maxZ();
+        graphics.drawString(font, trim(bounds, layout.contentW - 70), layout.contentX,
+            layout.footerY + 4, COLOR_MUTED, false);
+
+        if (maxScroll(layout) > 0.0F) {
+            String hint = "scroll";
+            graphics.drawString(font, hint, layout.contentRight - font.width(hint),
+                layout.footerY + 4, COLOR_MUTED, false);
+        }
     }
 
-    private String centerText() {
-        return decimal((state.minX() + state.maxX() + 1) / 2.0)
-            + " / " + decimal((state.minY() + state.maxY() + 1) / 2.0)
-            + " / " + decimal((state.minZ() + state.maxZ() + 1) / 2.0);
+    private void drawTab(GuiGraphics graphics, Hotspot hotspot) {
+        boolean active = activeTab == hotspot.tab;
+        boolean hot = hovered == hotspot;
+        int fill = active ? 0x8F211515 : hot ? 0x701F1414 : 0x3F120D0D;
+        int line = active ? COLOR_ACCENT : hot ? 0x906B242D : 0x4543312D;
+        drawPanel(graphics, hotspot.x, hotspot.y, hotspot.w, hotspot.h, alpha(fill), alpha(line));
+        String label = hotspot.label;
+        int color = active ? COLOR_TEXT : hot ? COLOR_TEXT_SOFT : COLOR_MUTED;
+        graphics.drawString(font, label, hotspot.x + (hotspot.w - font.width(label)) / 2,
+            hotspot.y + 4, color, false);
     }
 
-    private String decimal(double value) {
-        return String.format(Locale.ROOT, "%.1f", value);
+    private void drawButton(GuiGraphics graphics, Hotspot hotspot) {
+        if (hotspot == null) return;
+        boolean hot = hovered == hotspot;
+        int fill = hot ? 0x96371719 : 0x6F1A1111;
+        int line = hot ? COLOR_ACCENT : 0x70633F37;
+        if (hotspot.action == Action.SAVE) {
+            fill = hot ? 0xB08C2330 : 0x8A6B1721;
+            line = hot ? 0xFFE3515F : 0xB8BE3341;
+        } else if (hotspot.action == Action.CANCEL) {
+            fill = hot ? 0x9032171A : 0x65191111;
+        }
+        drawPanel(graphics, hotspot.x, hotspot.y, hotspot.w, hotspot.h, alpha(fill), alpha(line));
+        graphics.drawString(font, hotspot.label, hotspot.x + (hotspot.w - font.width(hotspot.label)) / 2,
+            hotspot.y + 4, COLOR_TEXT, false);
     }
 
-    private String trimToWidth(String text, int maxWidth) {
+    private void drawField(GuiGraphics graphics, Hotspot hotspot, String value) {
+        if (hotspot == null) return;
+        boolean active = hotspot.field == activeField;
+        drawPanel(graphics, hotspot.x, hotspot.y, hotspot.w, hotspot.h,
+            active ? alpha(COLOR_FIELD_ACTIVE) : alpha(COLOR_FIELD),
+            active ? COLOR_ACCENT : 0x77583A34);
+        String text = active ? value + cursor() : value;
+        graphics.drawString(font, trim(text, hotspot.w - 8), hotspot.x + 4, hotspot.y + 4,
+            active ? 0xFFFFF3E8 : 0xFFE7D5CA, false);
+    }
+
+    private void drawSlider(GuiGraphics graphics, Hotspot hotspot) {
+        if (hotspot == null) return;
+        double percent = sliderPercent(hotspot.slider);
+        int trackY = hotspot.y + hotspot.h / 2;
+        graphics.fill(hotspot.x, trackY - 2, hotspot.x + hotspot.w, trackY + 2, alpha(0x88493632));
+        graphics.fill(hotspot.x, trackY - 2, hotspot.x + (int) (hotspot.w * percent), trackY + 2,
+            COLOR_ACCENT);
+        int knobX = hotspot.x + (int) (hotspot.w * percent);
+        graphics.fill(knobX - 3, hotspot.y, knobX + 3, hotspot.y + hotspot.h, COLOR_TEXT);
+        graphics.fill(knobX - 1, hotspot.y - 2, knobX + 1, hotspot.y + hotspot.h + 2, COLOR_ACCENT);
+    }
+
+    private void drawSectionTitle(GuiGraphics graphics, int x, int y, String title) {
+        graphics.drawString(font, title, x, y, COLOR_ACCENT, false);
+        graphics.fill(x, y + 13, x + Math.min(180, font.width(title) + 42), y + 14, 0xAA7C3038);
+    }
+
+    private void drawScrollbar(GuiGraphics graphics, Layout layout) {
+        float max = maxScroll(layout);
+        if (max <= 0.0F || layout.bodyH <= 0) return;
+        int trackX = layout.bodyRight - 4;
+        int trackY = layout.bodyY + 2;
+        int trackH = Math.max(12, layout.bodyH - 4);
+        int thumbH = Math.max(18, (int) (trackH * (layout.bodyH / (float) contentHeight(layout))));
+        int thumbY = trackY + (int) ((trackH - thumbH) * (scroll / max));
+        graphics.fill(trackX, trackY, trackX + 2, trackY + trackH, 0x55392A27);
+        graphics.fill(trackX - 1, thumbY, trackX + 3, thumbY + thumbH, COLOR_ACCENT);
+    }
+
+    private int rowFill(Rect row) {
+        return hovered != null && hovered.isBodyControl()
+            && hovered.y >= row.y && hovered.y <= row.y + row.h
+            ? COLOR_ROW_HOT
+            : COLOR_ROW;
+    }
+
+    private Rect contentRow(Layout layout, int y, int h) {
+        return new Rect(layout.bodyX + 8, y, Math.max(80, layout.bodyW - 16), h);
+    }
+
+    private Rect infoFieldRect(Layout layout, int rowY, int rowH) {
+        Rect row = contentRow(layout, rowY, rowH);
+        int labelW = layout.ultraNarrow ? 58 : 68;
+        return new Rect(row.x + labelW, row.y + 7, Math.max(44, row.w - labelW - 8), FIELD_HEIGHT);
+    }
+
+    private ControlRects controlRects(Layout layout, Rect row) {
+        int buttonW = layout.ultraNarrow ? 18 : 16;
+        int fieldW = layout.ultraNarrow ? 48 : layout.narrow ? 56 : 52;
+        fieldW = Math.min(fieldW, Math.max(40, row.w / 3));
+        int fieldX = row.x + row.w - fieldW - 8;
+        int fieldY = row.y + 5;
+        int plusX = row.x + row.w - buttonW - 8;
+        int minusX = plusX - buttonW - 4;
+        int buttonY = row.y + row.h - BUTTON_HEIGHT - 4;
+        int sliderY = row.y + row.h - 8;
+        int sliderX = row.x + 8;
+        int sliderW = Math.max(8, minusX - sliderX - 8);
+
+        Rect field = new Rect(fieldX, fieldY, fieldW, FIELD_HEIGHT);
+        Rect slider = new Rect(sliderX, sliderY, sliderW, 4);
+        Rect minus = new Rect(minusX, buttonY, buttonW, BUTTON_HEIGHT);
+        Rect plus = new Rect(plusX, buttonY, buttonW, BUTTON_HEIGHT);
+        return new ControlRects(field, slider, minus, plus);
+    }
+
+    private int infoRowHeight(Layout layout) {
+        return layout.narrow ? 34 : 30;
+    }
+
+    private int controlRowHeight(Layout layout) {
+        if (layout.ultraNarrow) return 60;
+        return layout.narrow ? 46 : 40;
+    }
+
+    private int contentHeight(Layout layout) {
+        return switch (activeTab) {
+            case INFO -> 22 + 2 * infoRowHeight(layout) + ROW_GAP + 10;
+            case SIZE -> controlContentHeight(layout, 4);
+            case POSITION -> controlContentHeight(layout, 3);
+        };
+    }
+
+    private int controlContentHeight(Layout layout, int rows) {
+        return 22 + rows * controlRowHeight(layout) + Math.max(0, rows - 1) * ROW_GAP + 10;
+    }
+
+    private float maxScroll(Layout layout) {
+        return Math.max(0.0F, contentHeight(layout) - layout.bodyH);
+    }
+
+    private Layout layout() {
+        int margin = width < 420 ? 4 : 8;
+        boolean narrow = width < 880;
+        boolean tiny = height < 430;
+
+        int widthCap = Math.max(1, (int) (width * 0.25F));
+        int minPanelW = Math.min(180, widthCap);
+        int panelW = clamp((int) (width * 0.22F), minPanelW, Math.min(280, widthCap));
+
+        int panelX = Math.max(margin, width - margin - panelW);
+        int panelY = margin;
+        int panelH = Math.max(160, height - margin * 2);
+        int panelBottom = Math.min(height - margin, panelY + panelH);
+        panelH = panelBottom - panelY;
+
+        int contentX = panelX + (narrow ? 8 : 10);
+        int contentRight = panelX + panelW - (narrow ? 8 : 10);
+        int contentW = Math.max(80, contentRight - contentX);
+        boolean ultraNarrow = contentW < 250;
+
+        int headerH = tiny ? 48 : 52;
+        int footerH = tiny ? 0 : 14;
+        int titleY = panelY + 6;
+        int tabY = titleY + 22;
+        int bodyX = contentX;
+        int bodyRight = contentRight;
+        int bodyY = tabY + TAB_HEIGHT + 6;
+        int footerY = panelBottom - footerH;
+        int bodyBottom = footerH > 0 ? footerY - 5 : panelBottom - 5;
+        int bodyH = Math.max(48, bodyBottom - bodyY);
+
+        return new Layout(margin, panelY, panelX, panelY, panelW, panelH,
+            contentX, contentRight, contentW, titleY, tabY, bodyX, bodyY, bodyRight,
+            bodyBottom, Math.max(80, bodyRight - bodyX), bodyH, footerY, footerH,
+            narrow, ultraNarrow);
+    }
+
+    private void activate(Action action) {
+        switch (action) {
+            case SAVE -> saveAndClose();
+            case CANCEL -> cancelAndClose();
+            case SIZE_X_MINUS -> setSize(Axis.X, sizeX() - 1, true);
+            case SIZE_X_PLUS -> setSize(Axis.X, sizeX() + 1, true);
+            case SIZE_Y_MINUS -> setSize(Axis.Y, sizeY() - 1, true);
+            case SIZE_Y_PLUS -> setSize(Axis.Y, sizeY() + 1, true);
+            case SIZE_Z_MINUS -> setSize(Axis.Z, sizeZ() - 1, true);
+            case SIZE_Z_PLUS -> setSize(Axis.Z, sizeZ() + 1, true);
+            case SIZE_ALL_MINUS -> scaleAll(-1, true);
+            case SIZE_ALL_PLUS -> scaleAll(1, true);
+            case POS_X_MINUS -> setCenter(Axis.X, centerX(state) - 1, true);
+            case POS_X_PLUS -> setCenter(Axis.X, centerX(state) + 1, true);
+            case POS_Y_MINUS -> setCenter(Axis.Y, centerY(state) - 1, true);
+            case POS_Y_PLUS -> setCenter(Axis.Y, centerY(state) + 1, true);
+            case POS_Z_MINUS -> setCenter(Axis.Z, centerZ(state) - 1, true);
+            case POS_Z_PLUS -> setCenter(Axis.Z, centerZ(state) + 1, true);
+        }
+    }
+
+    private void applySlider(double mouseX, Hotspot hotspot) {
+        double t = clamp((mouseX - hotspot.x) / hotspot.w, 0.0D, 1.0D);
+        switch (hotspot.slider) {
+            case SIZE_X -> setSize(Axis.X, lerpInt(MIN_SIZE_X, MAX_SIZE, t), false);
+            case SIZE_Y -> setSize(Axis.Y, lerpInt(MIN_SIZE_Y, MAX_SIZE, t), false);
+            case SIZE_Z -> setSize(Axis.Z, lerpInt(MIN_SIZE_Z, MAX_SIZE, t), false);
+            case SIZE_ALL -> {
+                int value = lerpInt(Math.max(Math.max(MIN_SIZE_X, MIN_SIZE_Y), MIN_SIZE_Z), MAX_SIZE, t);
+                setBoundsFromCenter(centerX(state), centerY(state), centerZ(state),
+                    value, Math.max(MIN_SIZE_Y, value), value, false);
+            }
+            case POS_X -> setCenter(Axis.X, lerpInt(baseCenterX - POS_RANGE, baseCenterX + POS_RANGE, t), false);
+            case POS_Y -> setCenter(Axis.Y, lerpInt(baseCenterY - POS_RANGE, baseCenterY + POS_RANGE, t), false);
+            case POS_Z -> setCenter(Axis.Z, lerpInt(baseCenterZ - POS_RANGE, baseCenterZ + POS_RANGE, t), false);
+        }
+    }
+
+    private void beginField(TextField field) {
+        activeField = field;
+        editBuffer = switch (field) {
+            case ROOM_ID -> state.roomId();
+            case ROOM_NAME -> state.name();
+            case SIZE_X -> Integer.toString(sizeX());
+            case SIZE_Y -> Integer.toString(sizeY());
+            case SIZE_Z -> Integer.toString(sizeZ());
+            case SIZE_ALL -> Integer.toString(Math.max(Math.max(sizeX(), sizeY()), sizeZ()));
+            case POS_X -> Integer.toString(centerX(state));
+            case POS_Y -> Integer.toString(centerY(state));
+            case POS_Z -> Integer.toString(centerZ(state));
+        };
+    }
+
+    private void commitActiveField(boolean send) {
+        if (activeField == null) return;
+        TextField field = activeField;
+        String value = editBuffer.trim();
+        activeField = null;
+        editBuffer = "";
+        if (value.isEmpty()) return;
+
+        try {
+            switch (field) {
+                case ROOM_ID -> setState(new RoomEditorState(cleanId(value), state.name(),
+                    state.minX(), state.minY(), state.minZ(), state.maxX(), state.maxY(), state.maxZ()), send);
+                case ROOM_NAME -> setState(new RoomEditorState(state.roomId(), value,
+                    state.minX(), state.minY(), state.minZ(), state.maxX(), state.maxY(), state.maxZ()), send);
+                case SIZE_X -> setSize(Axis.X, Integer.parseInt(value), send);
+                case SIZE_Y -> setSize(Axis.Y, Integer.parseInt(value), send);
+                case SIZE_Z -> setSize(Axis.Z, Integer.parseInt(value), send);
+                case SIZE_ALL -> {
+                    int parsed = Integer.parseInt(value);
+                    setBoundsFromCenter(centerX(state), centerY(state), centerZ(state),
+                        parsed, Math.max(MIN_SIZE_Y, parsed), parsed, send);
+                }
+                case POS_X -> setCenter(Axis.X, Integer.parseInt(value), send);
+                case POS_Y -> setCenter(Axis.Y, Integer.parseInt(value), send);
+                case POS_Z -> setCenter(Axis.Z, Integer.parseInt(value), send);
+            }
+        } catch (NumberFormatException ignored) {
+        }
+    }
+
+    private void scaleAll(int delta, boolean send) {
+        setBoundsFromCenter(centerX(state), centerY(state), centerZ(state),
+            sizeX() + delta, sizeY() + delta, sizeZ() + delta, send);
+    }
+
+    private void setSize(Axis axis, int value, boolean send) {
+        int x = sizeX();
+        int y = sizeY();
+        int z = sizeZ();
+        if (axis == Axis.X) x = clamp(value, MIN_SIZE_X, MAX_SIZE);
+        if (axis == Axis.Y) y = clamp(value, MIN_SIZE_Y, MAX_SIZE);
+        if (axis == Axis.Z) z = clamp(value, MIN_SIZE_Z, MAX_SIZE);
+        setBoundsFromCenter(centerX(state), centerY(state), centerZ(state), x, y, z, send);
+    }
+
+    private void setCenter(Axis axis, int value, boolean send) {
+        int x = centerX(state);
+        int y = centerY(state);
+        int z = centerZ(state);
+        if (axis == Axis.X) x = value;
+        if (axis == Axis.Y) y = value;
+        if (axis == Axis.Z) z = value;
+        setBoundsFromCenter(x, y, z, sizeX(), sizeY(), sizeZ(), send);
+    }
+
+    private void setBoundsFromCenter(int centerX, int centerY, int centerZ,
+            int sizeX, int sizeY, int sizeZ, boolean send) {
+        int x = clamp(sizeX, MIN_SIZE_X, MAX_SIZE);
+        int y = clamp(sizeY, MIN_SIZE_Y, MAX_SIZE);
+        int z = clamp(sizeZ, MIN_SIZE_Z, MAX_SIZE);
+        int minX = centerX - x / 2;
+        int minY = centerY - y / 2;
+        int minZ = centerZ - z / 2;
+        setState(new RoomEditorState(state.roomId(), state.name(), minX, minY, minZ,
+            minX + x - 1, minY + y - 1, minZ + z - 1), send);
+    }
+
+    private void setState(RoomEditorState next, boolean send) {
+        state = normalize(next);
+        RoomHighlightRenderer.setEditingState(state);
+        clampScroll(layout());
+        if (send) sendUpdate();
+    }
+
+    private void sendUpdate() {
+        BloodPalaceNetwork.sendToServer(new RoomEditorUpdatePacket(state));
+    }
+
+    private void saveAndClose() {
+        commitActiveField(false);
+        BloodPalaceNetwork.sendToServer(RoomEditorActionPacket.save(state));
+        closeLocally();
+    }
+
+    private void cancelAndClose() {
+        if (!closing) BloodPalaceNetwork.sendToServer(RoomEditorActionPacket.cancel());
+        closeLocally();
+    }
+
+    private void closeLocally() {
+        if (closing) return;
+        closing = true;
+        RoomHighlightRenderer.clearEditingState();
+        restoreCamera();
+        Minecraft.getInstance().setScreen(null);
+    }
+
+    private void restoreCamera() {
+        if (minecraft != null && previousCameraType != null) {
+            minecraft.options.setCameraType(previousCameraType);
+            previousCameraType = null;
+        }
+    }
+
+    private void tickAnimation() {
+        long now = Util.getMillis();
+        if (lastRenderMs == 0L) lastRenderMs = now;
+        float dt = Math.min((now - lastRenderMs) / 1000.0F, 0.1F);
+        lastRenderMs = now;
+        panelAlpha += (1.0F - panelAlpha) * Math.min(1.0F, dt * 12.0F);
+        scroll += (targetScroll - scroll) * Math.min(1.0F, dt * 14.0F);
+        if (Math.abs(scroll - targetScroll) < 0.25F) scroll = targetScroll;
+    }
+
+    private void clampScroll(Layout layout) {
+        float max = maxScroll(layout);
+        targetScroll = clamp(targetScroll, 0.0F, max);
+        scroll = clamp(scroll, 0.0F, max);
+    }
+
+    private void drawPanel(GuiGraphics graphics, int x, int y, int w, int h, int fill, int line) {
+        if (w <= 0 || h <= 0) return;
+        graphics.fill(x, y, x + w, y + h, fill);
+        graphics.fill(x, y, x + w, y + 1, line);
+        graphics.fill(x, y, x + 1, y + h, line);
+        graphics.fill(x + w - 1, y, x + w, y + h, 0x66000000);
+        graphics.fill(x, y + h - 1, x + w, y + h, 0x66000000);
+    }
+
+    private void drawAccentEdge(GuiGraphics graphics, int x, int y, int h, int color) {
+        if (h <= 0) return;
+        graphics.fill(x, y, x + 3, y + h, color);
+        graphics.fill(x + 3, y, x + 16, y + 1, color);
+        graphics.fill(x + 3, y + h - 1, x + 16, y + h, color);
+    }
+
+    private Hotspot findAction(Action action) {
+        for (Hotspot hotspot : hotspots) if (hotspot.action == action) return hotspot;
+        return null;
+    }
+
+    private Hotspot findField(TextField field) {
+        for (Hotspot hotspot : hotspots) if (hotspot.field == field) return hotspot;
+        return null;
+    }
+
+    private Hotspot findSlider(Slider slider) {
+        for (Hotspot hotspot : hotspots) if (hotspot.slider == slider) return hotspot;
+        return null;
+    }
+
+    private double sliderPercent(Slider slider) {
+        return switch (slider) {
+            case SIZE_X -> percent(sizeX(), MIN_SIZE_X, MAX_SIZE);
+            case SIZE_Y -> percent(sizeY(), MIN_SIZE_Y, MAX_SIZE);
+            case SIZE_Z -> percent(sizeZ(), MIN_SIZE_Z, MAX_SIZE);
+            case SIZE_ALL -> percent(Math.max(Math.max(sizeX(), sizeY()), sizeZ()),
+                Math.max(Math.max(MIN_SIZE_X, MIN_SIZE_Y), MIN_SIZE_Z), MAX_SIZE);
+            case POS_X -> percent(centerX(state), baseCenterX - POS_RANGE, baseCenterX + POS_RANGE);
+            case POS_Y -> percent(centerY(state), baseCenterY - POS_RANGE, baseCenterY + POS_RANGE);
+            case POS_Z -> percent(centerZ(state), baseCenterZ - POS_RANGE, baseCenterZ + POS_RANGE);
+        };
+    }
+
+    private Action action(Axis axis, boolean plus, boolean sizePage) {
+        if (sizePage) {
+            return switch (axis) {
+                case X -> plus ? Action.SIZE_X_PLUS : Action.SIZE_X_MINUS;
+                case Y -> plus ? Action.SIZE_Y_PLUS : Action.SIZE_Y_MINUS;
+                case Z -> plus ? Action.SIZE_Z_PLUS : Action.SIZE_Z_MINUS;
+                case ALL -> plus ? Action.SIZE_ALL_PLUS : Action.SIZE_ALL_MINUS;
+            };
+        }
+        return switch (axis) {
+            case X -> plus ? Action.POS_X_PLUS : Action.POS_X_MINUS;
+            case Y -> plus ? Action.POS_Y_PLUS : Action.POS_Y_MINUS;
+            case Z, ALL -> plus ? Action.POS_Z_PLUS : Action.POS_Z_MINUS;
+        };
+    }
+
+    private Slider slider(Axis axis, boolean sizePage) {
+        if (sizePage) {
+            return switch (axis) {
+                case X -> Slider.SIZE_X;
+                case Y -> Slider.SIZE_Y;
+                case Z -> Slider.SIZE_Z;
+                case ALL -> Slider.SIZE_ALL;
+            };
+        }
+        return switch (axis) {
+            case X -> Slider.POS_X;
+            case Y -> Slider.POS_Y;
+            case Z, ALL -> Slider.POS_Z;
+        };
+    }
+
+    private TextField field(Axis axis, boolean sizePage) {
+        if (sizePage) {
+            return switch (axis) {
+                case X -> TextField.SIZE_X;
+                case Y -> TextField.SIZE_Y;
+                case Z -> TextField.SIZE_Z;
+                case ALL -> TextField.SIZE_ALL;
+            };
+        }
+        return switch (axis) {
+            case X -> TextField.POS_X;
+            case Y -> TextField.POS_Y;
+            case Z, ALL -> TextField.POS_Z;
+        };
+    }
+
+    private int value(Axis axis, boolean sizePage) {
+        if (sizePage) {
+            return switch (axis) {
+                case X -> sizeX();
+                case Y -> sizeY();
+                case Z -> sizeZ();
+                case ALL -> Math.max(Math.max(sizeX(), sizeY()), sizeZ());
+            };
+        }
+        return switch (axis) {
+            case X -> centerX(state);
+            case Y -> centerY(state);
+            case Z, ALL -> centerZ(state);
+        };
+    }
+
+    private String axisLabel(Axis axis, boolean sizePage) {
+        if (sizePage) {
+            return switch (axis) {
+                case X -> "Size X";
+                case Y -> "Size Y";
+                case Z -> "Size Z";
+                case ALL -> "Overall";
+            };
+        }
+        return switch (axis) {
+            case X -> "Pos X";
+            case Y -> "Pos Y";
+            case Z, ALL -> "Pos Z";
+        };
+    }
+
+    private String axisHint(Axis axis, boolean sizePage) {
+        if (axis == Axis.ALL) return "uniform room scale";
+        return sizePage ? "block length" : "room center";
+    }
+
+    private int minSize(Axis axis) {
+        return switch (axis) {
+            case X, ALL -> MIN_SIZE_X;
+            case Y -> MIN_SIZE_Y;
+            case Z -> MIN_SIZE_Z;
+        };
+    }
+
+    private int colorForAxis(Axis axis) {
+        return switch (axis) {
+            case X -> 0xFFE16978;
+            case Y -> 0xFFE3B34B;
+            case Z -> 0xFF4FC3F7;
+            case ALL -> 0xFFB98CFF;
+        };
+    }
+
+    private int sizeX() {
+        return state.width();
+    }
+
+    private int sizeY() {
+        return state.height();
+    }
+
+    private int sizeZ() {
+        return state.depth();
+    }
+
+    private static int centerX(RoomEditorState state) {
+        return (state.minX() + state.maxX() + 1) / 2;
+    }
+
+    private static int centerY(RoomEditorState state) {
+        return (state.minY() + state.maxY() + 1) / 2;
+    }
+
+    private static int centerZ(RoomEditorState state) {
+        return (state.minZ() + state.maxZ() + 1) / 2;
+    }
+
+    private RoomEditorState normalize(RoomEditorState state) {
+        int minX = Math.min(state.minX(), state.maxX());
+        int minY = Math.min(state.minY(), state.maxY());
+        int minZ = Math.min(state.minZ(), state.maxZ());
+        int maxX = Math.max(state.minX(), state.maxX());
+        int maxY = Math.max(state.minY(), state.maxY());
+        int maxZ = Math.max(state.minZ(), state.maxZ());
+        maxX = Math.max(maxX, minX + MIN_SIZE_X - 1);
+        maxY = Math.max(maxY, minY + MIN_SIZE_Y - 1);
+        maxZ = Math.max(maxZ, minZ + MIN_SIZE_Z - 1);
+        String id = cleanId(state.roomId());
+        if (id.isBlank()) id = "room";
+        String name = state.name() == null || state.name().isBlank() ? id : state.name().trim();
+        return new RoomEditorState(id, name, minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    private String cleanId(String value) {
+        return value == null ? "" : value.trim().replace(' ', '_');
+    }
+
+    private String trim(String text, int maxWidth) {
+        if (maxWidth <= 0) return "";
         if (font.width(text) <= maxWidth) return text;
         return font.plainSubstrByWidth(text, Math.max(0, maxWidth - font.width("..."))) + "...";
     }
 
-    private boolean isInsidePanel(double mouseX, double mouseY) {
-        Layout layout = layout();
-        return mouseX >= layout.left && mouseX <= layout.left + layout.panelWidth
-            && mouseY >= layout.top && mouseY <= layout.top + layout.panelHeight;
+    private String cursor() {
+        return (Util.getMillis() / 350L) % 2L == 0L ? "_" : "";
     }
 
-    private void syncEditBoxes(Layout layout) {
-        if (nameEdit != null) {
-            nameEdit.setX(layout.nameX);
-            nameEdit.setY(layout.nameY + 6);
-            nameEdit.setWidth(layout.nameWidth);
-        }
-        if (stepEdit != null) {
-            stepEdit.setX(layout.stepInputX);
-            stepEdit.setY(layout.stepY + 6);
-            stepEdit.setWidth(layout.stepInputWidth);
-        }
+    private double percent(int value, int min, int max) {
+        if (max <= min) return 0.0D;
+        return clamp((value - min) / (double) (max - min), 0.0D, 1.0D);
     }
 
-    private Layout layout() {
-        int panelWidth = panelWidth();
-        int panelHeight = panelHeight();
-        int left = (width - panelWidth) / 2;
-        int top = Math.max(4, (height - panelHeight) / 2);
-        int padding = panelWidth < 340 ? 12 : 18;
-        int gap = panelWidth < 340 ? 4 : 6;
-        int contentLeft = left + padding;
-        int contentRight = left + panelWidth - padding;
-        int contentWidth = contentRight - contentLeft;
-        boolean compact = panelHeight < 270;
-
-        int metricY = top + (compact ? 48 : 52);
-        int metricWidth = Math.max(54, (contentWidth - gap * 2) / 3);
-        int centerY = metricY + (compact ? 0 : 36);
-        int nameY = compact ? top + 76 : centerY + 22;
-        int stepY = nameY + (compact ? 30 : 38);
-        int footerButtonY = top + panelHeight - 38;
-        int moveY = compact ? stepY + 32 : footerButtonY - BUTTON_HEIGHT * 2 - 29;
-        int resizeY = compact ? moveY + 27 : footerButtonY - BUTTON_HEIGHT - 7;
-        if (!compact && moveY < stepY + 28) {
-            moveY = stepY + 28;
-            resizeY = moveY + BUTTON_HEIGHT + 4;
-            footerButtonY = Math.max(resizeY + BUTTON_HEIGHT + 7, footerButtonY);
-        }
-
-        int applyWidth = panelWidth < 340 ? 50 : 58;
-        int labelWidth = panelWidth < 340 ? 42 : 50;
-        int applyX = contentRight - applyWidth;
-        int nameX = contentLeft + labelWidth;
-        int nameWidth = Math.max(80, applyX - nameX - gap - 4);
-
-        int smallButtonWidth = panelWidth < 340 ? 20 : 24;
-        int stepInputWidth = panelWidth < 340 ? 30 : 38;
-        int presetButtonWidth = panelWidth < 340 ? 24 : 34;
-        int stepMinusX = contentLeft + labelWidth;
-        int stepInputX = stepMinusX + smallButtonWidth + gap;
-        int stepPlusX = stepInputX + stepInputWidth + gap;
-        int stepPresetX = stepPlusX + smallButtonWidth + gap + (panelWidth < 340 ? 4 : 14);
-        int presetSpace = contentRight - stepPresetX - gap * 2 - 4;
-        presetButtonWidth = Math.max(18, Math.min(presetButtonWidth, presetSpace / 3));
-
-        int axisLeft = compact ? contentLeft + labelWidth : contentLeft;
-        int axisWidth = contentRight - axisLeft;
-        int axisButtonWidth = Math.max(28, (axisWidth - gap * 5) / 6);
-        int footerGap = gap + 2;
-        int footerButtonWidth = Math.max(48, Math.min(68, (contentWidth - footerGap * 2) / 3));
-        int closeX = contentRight - footerButtonWidth;
-        int cancelX = closeX - footerGap - footerButtonWidth;
-        int saveX = cancelX - footerGap - footerButtonWidth;
-
-        return new Layout(left, top, panelWidth, panelHeight, contentLeft, contentRight, contentWidth, gap,
-            metricY, metricWidth, centerY, nameY, nameX, nameWidth, applyX, applyWidth, stepY,
-            stepMinusX, stepInputX, stepInputWidth, stepPlusX, stepPresetX, smallButtonWidth,
-            presetButtonWidth, axisLeft, axisButtonWidth, moveY, resizeY, footerButtonY, saveX, cancelX,
-            closeX, footerButtonWidth, compact);
+    private int lerpInt(int min, int max, double t) {
+        return (int) Math.round(min + (max - min) * clamp(t, 0.0D, 1.0D));
     }
 
-    private int panelWidth() {
-        int available = Math.max(220, width - 16);
-        if (available < MIN_PANEL_WIDTH) return available;
-        return Math.min(available, MAX_PANEL_WIDTH);
+    private int alpha(int color) {
+        int a = (int) (((color >>> 24) & 0xFF) * panelAlpha);
+        return (a << 24) | (color & 0x00FFFFFF);
     }
 
-    private int panelHeight() {
-        int available = Math.max(220, height - 12);
-        return Math.min(available, MAX_PANEL_HEIGHT);
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 
-    @Override
-    public void onClose() {
-        RoomHighlightRenderer.clearEditingState();
-        Minecraft.getInstance().setScreen(null);
+    private float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
     }
 
-    private record Layout(
-            int left,
-            int top,
-            int panelWidth,
-            int panelHeight,
-            int contentLeft,
-            int contentRight,
-            int contentWidth,
-            int gap,
-            int metricY,
-            int metricWidth,
-            int centerY,
-            int nameY,
-            int nameX,
-            int nameWidth,
-            int applyX,
-            int applyWidth,
-            int stepY,
-            int stepMinusX,
-            int stepInputX,
-            int stepInputWidth,
-            int stepPlusX,
-            int stepPresetX,
-            int smallButtonWidth,
-            int presetButtonWidth,
-            int axisLeft,
-            int axisButtonWidth,
-            int moveY,
-            int resizeY,
-            int footerButtonY,
-            int saveX,
-            int cancelX,
-            int closeX,
-            int footerButtonWidth,
-            boolean compact) {
+    private double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
-    private record Hotspot(Action action, String label, int x, int y, int width, int height, boolean enabled, Tone tone) {
-        private boolean contains(double mouseX, double mouseY) {
-            return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
+    private enum Tab {
+        INFO("Info"),
+        SIZE("Size"),
+        POSITION("Position");
+
+        private final String label;
+
+        Tab(String label) {
+            this.label = label;
         }
     }
 
-    private enum Tone {
-        NEUTRAL(0xAA172027, 0x66465C63, 0xEECDDEE2, 0xCC1D2C34, 0xAA6B8790),
-        ACCENT(0xBB0F5960, 0xCC26DCE8, 0xFFF2FEFF, 0xDD13717A, 0xFF49F2FF),
-        DANGER(0xAA3E1B22, 0xAA9C4C58, 0xFFFFD7DA, 0xCC5A2430, 0xFFE16978);
+    private enum Axis {
+        X,
+        Y,
+        Z,
+        ALL
+    }
 
-        private final int fill;
-        private final int line;
-        private final int text;
-        private final int hoverFill;
-        private final int hoverLine;
+    private enum TextField {
+        ROOM_ID(false, 64),
+        ROOM_NAME(false, 64),
+        SIZE_X(true, 4),
+        SIZE_Y(true, 4),
+        SIZE_Z(true, 4),
+        SIZE_ALL(true, 4),
+        POS_X(true, 7),
+        POS_Y(true, 7),
+        POS_Z(true, 7);
 
-        Tone(int fill, int line, int text, int hoverFill, int hoverLine) {
-            this.fill = fill;
-            this.line = line;
-            this.text = text;
-            this.hoverFill = hoverFill;
-            this.hoverLine = hoverLine;
+        private final boolean numeric;
+        private final int maxLength;
+
+        TextField(boolean numeric, int maxLength) {
+            this.numeric = numeric;
+            this.maxLength = maxLength;
         }
+
+        private boolean accepts(char c) {
+            if (!numeric) return c >= 32 && c != 127;
+            return Character.isDigit(c) || c == '-';
+        }
+
+        private int maxLength() {
+            return maxLength;
+        }
+    }
+
+    private enum Slider {
+        SIZE_X,
+        SIZE_Y,
+        SIZE_Z,
+        SIZE_ALL,
+        POS_X,
+        POS_Y,
+        POS_Z
     }
 
     private enum Action {
-        APPLY_NAME,
-        STEP_DOWN,
-        STEP_UP,
-        STEP_1,
-        STEP_5,
-        STEP_10,
-        MOVE_X_NEG,
-        MOVE_X_POS,
-        MOVE_Y_NEG,
-        MOVE_Y_POS,
-        MOVE_Z_NEG,
-        MOVE_Z_POS,
-        SCALE_X_NEG,
-        SCALE_X_POS,
-        SCALE_Y_NEG,
-        SCALE_Y_POS,
-        SCALE_Z_NEG,
-        SCALE_Z_POS,
         SAVE,
         CANCEL,
-        CLOSE
+        SIZE_X_MINUS,
+        SIZE_X_PLUS,
+        SIZE_Y_MINUS,
+        SIZE_Y_PLUS,
+        SIZE_Z_MINUS,
+        SIZE_Z_PLUS,
+        SIZE_ALL_MINUS,
+        SIZE_ALL_PLUS,
+        POS_X_MINUS,
+        POS_X_PLUS,
+        POS_Y_MINUS,
+        POS_Y_PLUS,
+        POS_Z_MINUS,
+        POS_Z_PLUS
+    }
+
+    private enum Kind {
+        BUTTON,
+        FIELD,
+        SLIDER,
+        TAB
+    }
+
+    private record Layout(int margin, int previewH, int panelX, int panelY, int panelW, int panelH,
+            int contentX, int contentRight, int contentW, int titleY, int tabY,
+            int bodyX, int bodyY, int bodyRight, int bodyBottom, int bodyW, int bodyH,
+            int footerY, int footerH, boolean narrow, boolean ultraNarrow) {
+        private boolean bodyContains(double mouseX, double mouseY) {
+            return mouseX >= bodyX && mouseX <= bodyRight && mouseY >= bodyY && mouseY <= bodyBottom;
+        }
+    }
+
+    private record Rect(int x, int y, int w, int h) {
+    }
+
+    private record ControlRects(Rect field, Rect slider, Rect minus, Rect plus) {
+    }
+
+    private static final class Hotspot {
+        private final Kind kind;
+        private final int x;
+        private final int y;
+        private final int w;
+        private final int h;
+        private final String label;
+        private final Action action;
+        private final TextField field;
+        private final Slider slider;
+        private final Tab tab;
+
+        private Hotspot(Kind kind, int x, int y, int w, int h, String label,
+                Action action, TextField field, Slider slider, Tab tab) {
+            this.kind = kind;
+            this.x = x;
+            this.y = y;
+            this.w = w;
+            this.h = h;
+            this.label = label;
+            this.action = action;
+            this.field = field;
+            this.slider = slider;
+            this.tab = tab;
+        }
+
+        private static Hotspot button(Action action, Rect rect, String label) {
+            return button(action, rect.x, rect.y, rect.w, rect.h, label);
+        }
+
+        private static Hotspot button(Action action, int x, int y, int w, int h, String label) {
+            return new Hotspot(Kind.BUTTON, x, y, w, h, label, action, null, null, null);
+        }
+
+        private static Hotspot field(TextField field, Rect rect) {
+            return new Hotspot(Kind.FIELD, rect.x, rect.y, rect.w, rect.h, "", null, field, null, null);
+        }
+
+        private static Hotspot slider(Slider slider, Rect rect) {
+            return new Hotspot(Kind.SLIDER, rect.x, rect.y, rect.w, rect.h, "", null, null, slider, null);
+        }
+
+        private static Hotspot tab(Tab tab, int x, int y, int w, int h) {
+            return new Hotspot(Kind.TAB, x, y, w, h, tab.label, null, null, null, tab);
+        }
+
+        private boolean contains(double mouseX, double mouseY) {
+            return mouseX >= x && mouseX <= x + w && mouseY >= y && mouseY <= y + h;
+        }
+
+        private boolean isBodyControl() {
+            if (kind == Kind.FIELD || kind == Kind.SLIDER) return true;
+            return kind == Kind.BUTTON && action != Action.SAVE && action != Action.CANCEL;
+        }
     }
 }

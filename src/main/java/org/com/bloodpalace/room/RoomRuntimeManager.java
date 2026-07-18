@@ -1,7 +1,5 @@
 package org.com.bloodpalace.room;
 
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ClientboundSetActionBarTextPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -9,6 +7,8 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.AABB;
 import org.com.bloodpalace.config.RoomConfig;
 import org.com.bloodpalace.entity.RoomCoreEntity;
+import org.com.bloodpalace.network.BloodPalaceNetwork;
+import org.com.bloodpalace.network.RoomOverlayPacket;
 import org.com.bloodpalace.util.ShowcaseDimensions;
 
 import java.util.ArrayList;
@@ -83,7 +83,7 @@ public final class RoomRuntimeManager {
         for (ServerPlayer player : players) {
             currentPlayers.add(player.getUUID());
             if (!state.playerIds.contains(player.getUUID())) {
-                showRoomOverlay(player, true, state.roomName);
+                showRoomOverlay(player, true, state.roomName, room.id);
             }
         }
 
@@ -91,7 +91,7 @@ public final class RoomRuntimeManager {
             if (currentPlayers.contains(previousPlayerId)) continue;
             ServerPlayer player = level.getServer().getPlayerList().getPlayer(previousPlayerId);
             if (player != null) {
-                showRoomOverlay(player, false, state.roomName);
+                showRoomOverlay(player, false, state.roomName, room.id);
             }
         }
 
@@ -104,7 +104,7 @@ public final class RoomRuntimeManager {
     }
 
     private static boolean contains(AABB bounds, Entity entity) {
-        return bounds.contains(entity.position());
+        return bounds.intersects(entity.getBoundingBox());
     }
 
     private static AABB bounds(RoomConfig.Room room) {
@@ -121,11 +121,8 @@ public final class RoomRuntimeManager {
         return room.name == null || room.name.isBlank() ? room.id : room.name;
     }
 
-    private static void showRoomOverlay(ServerPlayer player, boolean entered, String roomName) {
-        String prefix = entered ? "Entered Room" : "Left Room";
-        int color = entered ? 0xE3B34B : 0xC7B8AF;
-        Component message = Component.literal(prefix + ": " + roomName).withStyle(style -> style.withColor(color));
-        player.connection.send(new ClientboundSetActionBarTextPacket(message));
+    private static void showRoomOverlay(ServerPlayer player, boolean entered, String roomName, String roomId) {
+        BloodPalaceNetwork.sendToPlayer(player, new RoomOverlayPacket(entered, roomId, roomName));
     }
 
     private record RoomKey(String dimensionId, String roomId) {

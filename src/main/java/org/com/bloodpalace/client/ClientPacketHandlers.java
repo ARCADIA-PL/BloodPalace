@@ -2,6 +2,7 @@ package org.com.bloodpalace.client;
 
 import net.minecraft.client.Minecraft;
 import org.com.bloodpalace.network.RoomEditorState;
+import org.com.bloodpalace.network.RoomOverlayPacket;
 
 public final class ClientPacketHandlers {
 
@@ -16,5 +17,9 @@ public final class ClientPacketHandlers {
             return;
         }
         minecraft.setScreen(new RoomEditorScreen(state));
+    }
+
+    public static void showRoomOverlay(RoomOverlayPacket packet) {
+        RoomOverlayRenderer.push(packet);
     }
 }
