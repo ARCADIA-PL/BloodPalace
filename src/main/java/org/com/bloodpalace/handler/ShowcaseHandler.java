@@ -29,6 +29,7 @@ import org.com.bloodpalace.util.ShowcaseBlockCleaner;
 import org.com.bloodpalace.util.ShowcaseDimensions;
 import org.com.bloodpalace.util.ShowcaseTeleports;
 import org.com.bloodpalace.util.RoomCoreManager;
+import org.com.bloodpalace.room.RoomRuntimeManager;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -103,6 +104,13 @@ public class ShowcaseHandler {
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) return;
         tickQueuedShowcaseResets(event.getServer());
+    }
+
+    @SubscribeEvent
+    public void onLevelTick(TickEvent.LevelTickEvent event) {
+        if (event.phase == TickEvent.Phase.START) return;
+        if (!(event.level instanceof ServerLevel level)) return;
+        RoomRuntimeManager.tick(level);
     }
 
     @SubscribeEvent
