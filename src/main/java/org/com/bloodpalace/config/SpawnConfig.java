@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.io.InputStreamReader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -24,6 +25,7 @@ public final class SpawnConfig {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path CONFIG_PATH = FMLPaths.CONFIGDIR.get().resolve("bloodpalace-spawns.json");
+    private static final String DEFAULT_RESOURCE = "/defaultconfigs/bloodpalace-spawns.json";
     private static final Map<String, SpawnPoint> SPAWNS = new LinkedHashMap<>();
     private static final Map<String, Set<String>> CATEGORIES = new LinkedHashMap<>();
 
@@ -58,6 +60,7 @@ public final class SpawnConfig {
 
         if (!Files.exists(CONFIG_PATH)) {
             try {
+                loadDefaults();
                 save();
             } catch (IOException e) {
                 LOGGER.error("BloodPalace: failed to create spawn config {}", CONFIG_PATH, e);
@@ -79,6 +82,32 @@ public final class SpawnConfig {
         } catch (IOException | JsonParseException e) {
             LOGGER.error("BloodPalace: failed to load spawn config {}", CONFIG_PATH, e);
         }
+    }
+
+    private static void loadDefaults() throws IOException {
+        try (Reader reader = openDefaultConfig()) {
+            if (reader == null) {
+                return;
+            }
+            ConfigData data = GSON.fromJson(reader, ConfigData.class);
+            SPAWNS.clear();
+            CATEGORIES.clear();
+            if (data != null && data.spawns != null) {
+                SPAWNS.putAll(data.spawns);
+            }
+            if (data != null && data.categories != null) {
+                CATEGORIES.putAll(data.categories);
+            }
+        }
+    }
+
+    private static Reader openDefaultConfig() {
+        var stream = SpawnConfig.class.getResourceAsStream(DEFAULT_RESOURCE);
+        if (stream == null) {
+            LOGGER.warn("BloodPalace: default spawn config resource {} not found", DEFAULT_RESOURCE);
+            return null;
+        }
+        return new InputStreamReader(stream, StandardCharsets.UTF_8);
     }
 
     private static void save() throws IOException {

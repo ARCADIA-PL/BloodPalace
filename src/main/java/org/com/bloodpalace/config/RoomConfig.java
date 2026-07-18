@@ -8,6 +8,7 @@ import net.minecraftforge.fml.loading.FMLPaths;
 import org.slf4j.Logger;
 
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
@@ -24,6 +25,7 @@ public final class RoomConfig {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path CONFIG_PATH = FMLPaths.CONFIGDIR.get().resolve("bloodpalace-rooms.json");
+    private static final String DEFAULT_RESOURCE = "/defaultconfigs/bloodpalace-rooms.json";
     private static final Map<String, List<Room>> ROOMS = new LinkedHashMap<>();
 
     private static boolean loaded;
@@ -75,6 +77,7 @@ public final class RoomConfig {
 
         if (!Files.exists(CONFIG_PATH)) {
             try {
+                loadDefaults();
                 save();
             } catch (IOException e) {
                 LOGGER.error("BloodPalace: failed to create room config {}", CONFIG_PATH, e);
@@ -92,6 +95,29 @@ public final class RoomConfig {
         } catch (IOException | JsonParseException e) {
             LOGGER.error("BloodPalace: failed to load room config {}", CONFIG_PATH, e);
         }
+    }
+
+    private static void loadDefaults() throws IOException {
+        try (Reader reader = openDefaultConfig()) {
+            if (reader == null) {
+                return;
+            }
+            ConfigData data = GSON.fromJson(reader, ConfigData.class);
+            ROOMS.clear();
+            if (data != null && data.rooms != null) {
+                data.rooms.forEach((dimensionId, rooms) ->
+                    ROOMS.put(dimensionId, new ArrayList<>(rooms)));
+            }
+        }
+    }
+
+    private static Reader openDefaultConfig() {
+        var stream = RoomConfig.class.getResourceAsStream(DEFAULT_RESOURCE);
+        if (stream == null) {
+            LOGGER.warn("BloodPalace: default room config resource {} not found", DEFAULT_RESOURCE);
+            return null;
+        }
+        return new InputStreamReader(stream, StandardCharsets.UTF_8);
     }
 
     private static void save() throws IOException {

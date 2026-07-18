@@ -1,0 +1,166 @@
+{
+  "spawns": {
+    "bloodpalace:abandoned_temple_showcase": {
+      "x": -24.127148196657878,
+      "y": 56.0,
+      "z": -15.05239555348133,
+      "yaw": -90.64075,
+      "pitch": -1.1997461
+    },
+    "bloodpalace:aviary_showcase": {
+      "x": 22.71075857927267,
+      "y": 26.0,
+      "z": -23.472892032361507,
+      "yaw": 89.78706,
+      "pitch": 3.2997246
+    },
+    "bloodpalace:bandit_towers_showcase": {
+      "x": -27.496831101446787,
+      "y": -40.0,
+      "z": -9.85765949594223,
+      "yaw": -96.06763,
+      "pitch": 0.899476
+    },
+    "bloodpalace:bandit_village_showcase": {
+      "x": 18.99935555788238,
+      "y": -62.0,
+      "z": 20.917179704320244,
+      "yaw": 125.6311,
+      "pitch": 5.8494525
+    },
+    "bloodpalace:bathhouse_showcase": {
+      "x": 25.630220246409014,
+      "y": 50.5,
+      "z": 4.829609711806678,
+      "yaw": -30.368958,
+      "pitch": -6.2051415E-4
+    },
+    "bloodpalace:coliseum_showcase": {
+      "x": -44.791916663245814,
+      "y": 51.0,
+      "z": -12.393947128389593,
+      "yaw": -51.52896,
+      "pitch": 2.5497165
+    },
+    "bloodpalace:foundry_showcase": {
+      "x": 78.74027484781062,
+      "y": 52.0,
+      "z": -112.55494968661576,
+      "yaw": 1.2761346,
+      "pitch": 2.099846
+    },
+    "bloodpalace:heavenly_challenger_showcase": {
+      "x": 1.4487884579964387,
+      "y": 63.0,
+      "z": 17.21581834831034,
+      "yaw": -179.47481,
+      "pitch": 1.0496095
+    },
+    "bloodpalace:heavenly_conqueror_showcase": {
+      "x": -30.52046901732828,
+      "y": 76.0,
+      "z": 16.86781058318946,
+      "yaw": -179.62718,
+      "pitch": 3.2997456
+    },
+    "bloodpalace:heavenly_rider_showcase": {
+      "x": -30.550618511654413,
+      "y": 90.875,
+      "z": 4.699999988079071,
+      "yaw": 179.91888,
+      "pitch": 0.1501363
+    },
+    "bloodpalace:infested_temple_showcase": {
+      "x": -43.89766666671144,
+      "y": -13.9375,
+      "z": -42.113271052551156,
+      "yaw": -2.456543,
+      "pitch": 8.249392
+    },
+    "bloodpalace:keep_kayra_showcase": {
+      "x": -36.9892564964418,
+      "y": 61.0,
+      "z": 0.5834661713031352,
+      "yaw": -87.369774,
+      "pitch": -12.600533
+    },
+    "bloodpalace:mechanical_nest_showcase": {
+      "x": -38.97138922176501,
+      "y": 72.64427699263183,
+      "z": -13.973217548097345,
+      "yaw": 121.137146,
+      "pitch": -16.800447
+    },
+    "bloodpalace:mining_system_showcase": {
+      "x": 83.08305452658715,
+      "y": 65.1906386425271,
+      "z": 84.41771470409228,
+      "yaw": 176.77757,
+      "pitch": 0.8996095
+    },
+    "bloodpalace:monastery_showcase": {
+      "x": -67.54682081744045,
+      "y": 53.15100512869402,
+      "z": -64.69015957866254,
+      "yaw": -9.515228,
+      "pitch": -1.9503754
+    },
+    "bloodpalace:mushroom_mines_showcase": {
+      "x": -37.039183220440286,
+      "y": 71.0,
+      "z": -19.627832112887813,
+      "yaw": -4.8611755,
+      "pitch": -0.3008322
+    },
+    "bloodpalace:plague_asylum_showcase": {
+      "x": 10.076775155250132,
+      "y": 59.0,
+      "z": -30.564138572687643,
+      "yaw": 179.79706,
+      "pitch": -1.0505968
+    },
+    "bloodpalace:scorched_mines_showcase": {
+      "x": -4.49429747423919,
+      "y": 24.0,
+      "z": 19.817216360090452,
+      "yaw": 179.0467,
+      "pitch": -1.5005739
+    },
+    "bloodpalace:shiraz_palace_showcase": {
+      "x": 38.73700684687681,
+      "y": 50.0,
+      "z": 35.2043377845165,
+      "yaw": 132.09702,
+      "pitch": -3.9005196
+    },
+    "bloodpalace:thornborn_towers_showcase": {
+      "x": 27.998780810402327,
+      "y": 58.0,
+      "z": -28.836180631939772,
+      "yaw": 47.045227,
+      "pitch": -20.850264
+    }
+  },
+  "categories": {
+    "combat": [
+      "bloodpalace:abandoned_temple_showcase",
+      "bloodpalace:aviary_showcase",
+      "bloodpalace:bandit_towers_showcase",
+      "bloodpalace:coliseum_showcase",
+      "bloodpalace:foundry_showcase",
+      "bloodpalace:heavenly_challenger_showcase",
+      "bloodpalace:heavenly_conqueror_showcase",
+      "bloodpalace:heavenly_rider_showcase",
+      "bloodpalace:infested_temple_showcase",
+      "bloodpalace:keep_kayra_showcase",
+      "bloodpalace:mechanical_nest_showcase",
+      "bloodpalace:mining_system_showcase",
+      "bloodpalace:monastery_showcase",
+      "bloodpalace:mushroom_mines_showcase",
+      "bloodpalace:plague_asylum_showcase",
+      "bloodpalace:scorched_mines_showcase",
+      "bloodpalace:shiraz_palace_showcase",
+      "bloodpalace:thornborn_towers_showcase"
+    ]
+  }
+}
