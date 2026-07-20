@@ -55,8 +55,6 @@ public final class ShowcaseTeleports {
             return 0;
         }
 
-        rememberOrigin(player);
-
         String dimString = legacyDebug
             ? ShowcaseDimensions.legacyDimensionIdForStructure(structureName)
             : ShowcaseDimensions.dimensionIdForStructure(structureName);
@@ -66,6 +64,21 @@ public final class ShowcaseTeleports {
         ResourceLocation dimensionId = legacyDebug
             ? ShowcaseDimensions.legacyDimensionLocationForStructure(structureName)
             : ShowcaseDimensions.dimensionLocationForStructure(structureName);
+
+        ServerLevel level = source.getServer().getLevel(dimKey);
+        if (level == null) {
+            source.sendFailure(Component.literal("\u00a7cShowcase dimension does not exist."));
+            return 0;
+        }
+        if (!legacyDebug
+                && !(level.getChunkSource().getGenerator() instanceof PrefabChunkGenerator)) {
+            source.sendFailure(Component.literal(
+                "\u00a7cThis structure is not available in production mode yet. "
+                    + "Use /bloodpalace debug " + structureName + " for legacy development."));
+            return 0;
+        }
+
+        rememberOrigin(player);
 
         source.sendSuccess(() -> Component.literal(
             "\u00a77Preparing " + (legacyDebug ? "\u00a7cDEBUG \u00a76" : "\u00a76")
@@ -81,12 +94,6 @@ public final class ShowcaseTeleports {
             waitForResetAndEnter(player, source.getServer(), dimKey, dimensionId,
                 dimString, structureName, token);
             return 1;
-        }
-
-        ServerLevel level = source.getServer().getLevel(dimKey);
-        if (level == null) {
-            source.sendFailure(Component.literal("\u00a7cShowcase dimension does not exist."));
-            return 0;
         }
 
         preloadAndEnter(player, level, dimString, structureName);

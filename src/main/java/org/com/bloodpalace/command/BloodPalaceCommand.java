@@ -91,7 +91,7 @@ public class BloodPalaceCommand {
                             .then(Commands.argument("radius", IntegerArgumentType.integer(0, 32))
                                 .executes(BloodPalaceCommand::exportNamedPrefab)))))
                 .then(Commands.argument("structure", StringArgumentType.word())
-                    .suggests(BloodPalaceCommand::suggestStructures)
+                    .suggests(BloodPalaceCommand::suggestProductionStructures)
                     .executes(ctx -> teleportToStructure(
                         ctx.getSource(),
                         StringArgumentType.getString(ctx, "structure"))))
@@ -115,13 +115,14 @@ public class BloodPalaceCommand {
     }
 
     private static int listStructures(CommandContext<CommandSourceStack> ctx) {
+        var structures = ShowcaseDimensions.productionStructures(ctx.getSource().getServer());
         ctx.getSource().sendSuccess(
-            () -> Component.literal("\u00a76===== \u00a7e" + ShowcaseDimensions.STRUCTURES.size()
-                + "\u00a76 structures ====="), false);
+            () -> Component.literal("\u00a76===== \u00a7e" + structures.size()
+                + "\u00a76 production structures ====="), false);
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < ShowcaseDimensions.STRUCTURES.size(); i++) {
+        for (int i = 0; i < structures.size(); i++) {
             sb.append("\u00a77").append(String.format("%2d", i + 1))
-              .append(". \u00a7f").append(ShowcaseDimensions.STRUCTURES.get(i))
+              .append(". \u00a7f").append(structures.get(i))
               .append(i % 3 == 2 ? "\n" : "    ");
         }
         ctx.getSource().sendSuccess(() -> Component.literal(sb.toString()), false);
@@ -132,6 +133,15 @@ public class BloodPalaceCommand {
             CommandContext<CommandSourceStack> ctx, SuggestionsBuilder builder) {
         String remaining = builder.getRemaining().toLowerCase();
         for (String name : ShowcaseDimensions.STRUCTURES) {
+            if (name.startsWith(remaining)) builder.suggest(name);
+        }
+        return builder.buildFuture();
+    }
+
+    private static CompletableFuture<Suggestions> suggestProductionStructures(
+            CommandContext<CommandSourceStack> ctx, SuggestionsBuilder builder) {
+        String remaining = builder.getRemaining().toLowerCase();
+        for (String name : ShowcaseDimensions.productionStructures(ctx.getSource().getServer())) {
             if (name.startsWith(remaining)) builder.suggest(name);
         }
         return builder.buildFuture();

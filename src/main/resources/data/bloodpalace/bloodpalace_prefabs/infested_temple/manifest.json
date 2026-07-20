@@ -1,0 +1,11 @@
+{
+  "format": 1,
+  "data_version": 3465,
+  "min_chunk_x": -20,
+  "max_chunk_x": 16,
+  "min_chunk_z": -20,
+  "max_chunk_z": 16,
+  "min_y": -64,
+  "height": 384,
+  "content_hash": "sha256:7620de0af78b531f11441ee51e4511ef8dae7308611951b87e132ec14319082f"
+}

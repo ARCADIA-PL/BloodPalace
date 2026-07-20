@@ -3,7 +3,10 @@ package org.com.bloodpalace.util;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
+import org.com.bloodpalace.worldgen.prefab.PrefabChunkGenerator;
 
 import java.util.List;
 
@@ -30,6 +33,18 @@ public final class ShowcaseDimensions {
 
     public static boolean isKnownStructure(String structureName) {
         return STRUCTURES.contains(structureName);
+    }
+
+    public static boolean isProductionReady(MinecraftServer server, String structureName) {
+        if (!isKnownStructure(structureName)) return false;
+        ServerLevel level = server.getLevel(dimensionKeyForStructure(structureName));
+        return level != null && level.getChunkSource().getGenerator() instanceof PrefabChunkGenerator;
+    }
+
+    public static List<String> productionStructures(MinecraftServer server) {
+        return STRUCTURES.stream()
+            .filter(name -> isProductionReady(server, name))
+            .toList();
     }
 
     public static String dimensionIdForStructure(String structureName) {
