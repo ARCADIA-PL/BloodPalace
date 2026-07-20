@@ -30,6 +30,7 @@ import org.com.bloodpalace.util.ShowcaseDimensions;
 import org.com.bloodpalace.util.ShowcaseTeleports;
 import org.com.bloodpalace.util.RoomCoreManager;
 import org.com.bloodpalace.room.RoomRuntimeManager;
+import org.com.bloodpalace.worldgen.prefab.PrefabChunkGenerator;
 import org.slf4j.Logger;
 
 import java.io.IOException;
@@ -91,7 +92,10 @@ public class ShowcaseHandler {
                 ShowcaseTeleports.teleportToConfiguredSpawn(player, toDim);
             }
             clearLoadedShowcaseMobs(player.serverLevel());
-            clearLoadedShowcaseBlocks(player.serverLevel());
+            if (!(player.serverLevel().getChunkSource().getGenerator()
+                    instanceof PrefabChunkGenerator)) {
+                clearLoadedShowcaseBlocks(player.serverLevel());
+            }
             RoomCoreManager.ensureForDimension(player.serverLevel());
         }
 
@@ -141,7 +145,6 @@ public class ShowcaseHandler {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
         if (!(event.getChunk() instanceof LevelChunk chunk)) return;
         if (!ShowcaseDimensions.isShowcaseDimension(level.dimension().location())) return;
-
         level.getServer().tell(new TickTask(level.getServer().getTickCount(), () ->
             clearChunkShowcaseBlocks(level, chunk)));
     }

@@ -5,6 +5,9 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.LevelHeightAccessor;
@@ -16,6 +19,7 @@ import net.minecraft.world.level.biome.FixedBiomeSource;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.levelgen.GenerationStep;
@@ -87,13 +91,23 @@ public final class PrefabChunkGenerator extends ChunkGenerator {
     @Override
     public void spawnOriginalMobs(WorldGenRegion region) {
         PrefabRepository.get().loadNow(prefabId, region.getCenter()).ifPresent(data -> {
-            for (net.minecraft.nbt.CompoundTag source : data.entities()) {
+            for (CompoundTag source : data.entities()) {
+                if (!belongsToChunk(source, data)) continue;
                 EntityType.loadEntityRecursive(source.copy(), region.getLevel(), entity -> {
+                    if (entity instanceof Mob) return null;
                     region.addFreshEntity(entity);
                     return entity;
                 });
             }
         });
+    }
+
+    private static boolean belongsToChunk(CompoundTag entityTag, PrefabChunkData chunk) {
+        ListTag pos = entityTag.getList("Pos", Tag.TAG_DOUBLE);
+        if (pos.size() < 3) return false;
+        int chunkX = ((int) Math.floor(pos.getDouble(0))) >> 4;
+        int chunkZ = ((int) Math.floor(pos.getDouble(2))) >> 4;
+        return chunkX == chunk.chunkX() && chunkZ == chunk.chunkZ();
     }
 
     @Override
