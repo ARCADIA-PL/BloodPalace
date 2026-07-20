@@ -5,6 +5,10 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.ChunkPos;
 import org.slf4j.Logger;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -15,6 +19,7 @@ import java.util.concurrent.Executor;
 public final class PrefabRepository {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final long CACHE_BUDGET_BYTES = 64L * 1024L * 1024L;
+    private static final int DISK_CACHE_SCHEMA = 2;
     private static final PrefabRepository INSTANCE = new PrefabRepository();
 
     private final Map<VersionedKey, CompletableFuture<Optional<PrefabChunkData>>> inFlight =
@@ -46,6 +51,20 @@ public final class PrefabRepository {
 
     public Optional<PrefabManifest> manifest(ResourceLocation prefabId) {
         return Optional.ofNullable(snapshot.manifests.get(prefabId));
+    }
+
+    public String diskCacheFingerprint() {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            digest.update(("schema=" + DISK_CACHE_SCHEMA + "\n").getBytes(StandardCharsets.UTF_8));
+            snapshot.manifests.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> digest.update((entry.getKey() + "="
+                    + entry.getValue().contentHash() + "\n").getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
     }
 
     public CompletableFuture<Optional<PrefabChunkData>> loadAsync(ResourceLocation prefabId,

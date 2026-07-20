@@ -5,6 +5,7 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
+import net.minecraft.core.RegistryAccess;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
@@ -13,6 +14,7 @@ import net.minecraft.server.level.WorldGenRegion;
 import net.minecraft.world.level.LevelHeightAccessor;
 import net.minecraft.world.level.NoiseColumn;
 import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.WorldGenLevel;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
 import net.minecraft.world.level.biome.FixedBiomeSource;
@@ -22,10 +24,12 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.ChunkGenerator;
+import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
 import net.minecraft.world.level.levelgen.GenerationStep;
 import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.levelgen.RandomState;
 import net.minecraft.world.level.levelgen.blending.Blender;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplateManager;
 import org.slf4j.Logger;
 
 import java.util.List;
@@ -87,6 +91,19 @@ public final class PrefabChunkGenerator extends ChunkGenerator {
     public void applyCarvers(WorldGenRegion region, long seed, RandomState randomState,
             BiomeManager biomeManager, StructureManager structures, ChunkAccess chunk,
             GenerationStep.Carving carving) {}
+
+    @Override
+    public void createStructures(RegistryAccess registries,
+            ChunkGeneratorStructureState structureState, StructureManager structures,
+            ChunkAccess chunk, StructureTemplateManager templates) {}
+
+    @Override
+    public void createReferences(WorldGenLevel level, StructureManager structures,
+            ChunkAccess chunk) {}
+
+    @Override
+    public void applyBiomeDecoration(WorldGenLevel level, ChunkAccess chunk,
+            StructureManager structures) {}
 
     @Override
     public void spawnOriginalMobs(WorldGenRegion region) {

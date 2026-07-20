@@ -17,6 +17,7 @@ import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.chunk.ChunkStatus;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.storage.IOWorker;
+import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
@@ -31,11 +32,13 @@ import org.com.bloodpalace.util.ShowcaseTeleports;
 import org.com.bloodpalace.util.RoomCoreManager;
 import org.com.bloodpalace.room.RoomRuntimeManager;
 import org.com.bloodpalace.worldgen.prefab.PrefabChunkGenerator;
+import org.com.bloodpalace.worldgen.prefab.PrefabRepository;
 import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HashMap;
@@ -49,6 +52,7 @@ public class ShowcaseHandler {
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int BORDER_SIZE = 500;
     private static final int RESET_DELAY_TICKS = 200;
+    private static final String PREFAB_CACHE_MARKER = "prefab-cache.fingerprint";
 
     private static final Map<ResourceLocation, Boolean> RESET_STARTED = new HashMap<>();
     private static final Map<ResourceLocation, Integer> RESET_COUNTDOWN = new HashMap<>();
@@ -63,6 +67,7 @@ public class ShowcaseHandler {
 
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
+        invalidateChangedPrefabCaches(event.getServer());
         /*preloadHeavyStructuresSync(event.getServer());*/
     }
 
@@ -145,6 +150,7 @@ public class ShowcaseHandler {
         if (!(event.getLevel() instanceof ServerLevel level)) return;
         if (!(event.getChunk() instanceof LevelChunk chunk)) return;
         if (!ShowcaseDimensions.isShowcaseDimension(level.dimension().location())) return;
+        if (level.getChunkSource().getGenerator() instanceof PrefabChunkGenerator) return;
         level.getServer().tell(new TickTask(level.getServer().getTickCount(), () ->
             clearChunkShowcaseBlocks(level, chunk)));
     }
@@ -274,21 +280,57 @@ public class ShowcaseHandler {
         }
     }
 
-    private void deleteRegionCaches(ServerLevel level, ResourceLocation dimensionId) {
+    private boolean deleteRegionCaches(ServerLevel level, ResourceLocation dimensionId) {
         try {
             IOWorker ioWorker = (IOWorker) level.getChunkSource().chunkScanner();
             Path regionFolder = ioWorker.storage.folder;
-            if (!Files.exists(regionFolder)) {
-                LOGGER.info("BloodPalace: no region files in {}, skipped reset delete", dimensionId);
-                return;
-            }
-
             ioWorker.storage.regionCache.clear();
+            boolean hadCache = Files.exists(regionFolder)
+                || Files.exists(regionFolder.getParent().resolve("entities"))
+                || Files.exists(regionFolder.getParent().resolve("poi"));
             deleteFiles(regionFolder, dimensionId);
             deleteFiles(regionFolder.getParent().resolve("entities"), dimensionId);
             deleteFiles(regionFolder.getParent().resolve("poi"), dimensionId);
-        } catch (IOException e) {
+            if (!hadCache) {
+                LOGGER.info("BloodPalace: no cached dimension files in {}, skipped delete", dimensionId);
+            }
+            return true;
+        } catch (Exception e) {
             LOGGER.error("BloodPalace: failed to reset dimension {}", dimensionId, e);
+            return false;
+        }
+    }
+
+    private void invalidateChangedPrefabCaches(MinecraftServer server) {
+        String expected = PrefabRepository.get().diskCacheFingerprint();
+        Path markerDir = server.getWorldPath(LevelResource.ROOT).resolve("bloodpalace");
+        Path marker = markerDir.resolve(PREFAB_CACHE_MARKER);
+        try {
+            if (Files.exists(marker) && expected.equals(Files.readString(marker).trim())) return;
+
+            LOGGER.info("BloodPalace: prefab resources changed, invalidating production dimension caches");
+            boolean success = true;
+            for (String structureName : ShowcaseDimensions.STRUCTURES) {
+                ResourceKey<Level> key = ShowcaseDimensions.dimensionKeyForStructure(structureName);
+                ServerLevel level = server.getLevel(key);
+                if (level == null
+                        || !(level.getChunkSource().getGenerator() instanceof PrefabChunkGenerator)) {
+                    continue;
+                }
+                success &= deleteRegionCaches(level, level.dimension().location());
+            }
+            if (!success) {
+                LOGGER.error("BloodPalace: prefab cache invalidation was incomplete; marker not updated");
+                return;
+            }
+
+            Files.createDirectories(markerDir);
+            Path temporary = markerDir.resolve(PREFAB_CACHE_MARKER + ".tmp");
+            Files.writeString(temporary, expected);
+            Files.move(temporary, marker, StandardCopyOption.REPLACE_EXISTING);
+            LOGGER.info("BloodPalace: production prefab caches are ready for fingerprint {}", expected);
+        } catch (IOException e) {
+            LOGGER.error("BloodPalace: failed to update prefab cache fingerprint", e);
         }
     }
 
