@@ -11,6 +11,7 @@ public final class ShowcaseDimensions {
 
     public static final String NAMESPACE = "bloodpalace";
     public static final String DIM_SUFFIX = "_showcase";
+    public static final String LEGACY_DIM_SUFFIX = "_legacy_showcase";
 
     public static final List<String> STRUCTURES = List.of(
         "abandoned_temple", "aviary", "bandit_towers", "bandit_village", "bathhouse",
@@ -43,9 +44,27 @@ public final class ShowcaseDimensions {
         return ResourceKey.create(Registries.DIMENSION, dimensionLocationForStructure(structureName));
     }
 
+    public static String legacyDimensionIdForStructure(String structureName) {
+        return NAMESPACE + ":" + structureName + LEGACY_DIM_SUFFIX;
+    }
+
+    public static ResourceLocation legacyDimensionLocationForStructure(String structureName) {
+        return ResourceLocation.fromNamespaceAndPath(NAMESPACE, structureName + LEGACY_DIM_SUFFIX);
+    }
+
+    public static ResourceKey<Level> legacyDimensionKeyForStructure(String structureName) {
+        return ResourceKey.create(Registries.DIMENSION, legacyDimensionLocationForStructure(structureName));
+    }
+
     public static boolean isShowcaseDimension(ResourceLocation dimensionId) {
         return NAMESPACE.equals(dimensionId.getNamespace())
-            && dimensionId.getPath().endsWith(DIM_SUFFIX);
+            && (dimensionId.getPath().endsWith(DIM_SUFFIX)
+                || dimensionId.getPath().endsWith(LEGACY_DIM_SUFFIX));
+    }
+
+    public static boolean isLegacyShowcaseDimension(ResourceLocation dimensionId) {
+        return NAMESPACE.equals(dimensionId.getNamespace())
+            && dimensionId.getPath().endsWith(LEGACY_DIM_SUFFIX);
     }
 
     public static boolean isShowcaseStructureSet(ResourceLocation structureSetId) {
@@ -57,7 +76,8 @@ public final class ShowcaseDimensions {
         if (!isShowcaseDimension(dimensionId)) return null;
 
         String path = dimensionId.getPath();
-        String structureName = path.substring(0, path.length() - DIM_SUFFIX.length());
+        String suffix = isLegacyShowcaseDimension(dimensionId) ? LEGACY_DIM_SUFFIX : DIM_SUFFIX;
+        String structureName = path.substring(0, path.length() - suffix.length());
         return isKnownStructure(structureName) ? structureName : null;
     }
 

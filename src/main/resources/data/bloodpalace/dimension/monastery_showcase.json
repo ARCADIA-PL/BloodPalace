@@ -1,24 +1,10 @@
 {
   "type": "bloodpalace:showcase",
   "generator": {
-    "type": "minecraft:flat",
-    "settings": {
-      "biome": "bloodpalace:monastery_biome",
-      "lakes": false,
-      "features": false,
-      "layers": [
-        {
-          "block": "minecraft:barrier",
-          "height": 1
-        },
-        {
-          "block": "minecraft:air",
-          "height": 255
-        }
-      ],
-      "structure_overrides": [
-        "bloodpalace:monastery_showcase"
-      ]
-    }
+    "type": "bloodpalace:prefab",
+    "prefab": "bloodpalace:monastery",
+    "biome": "bloodpalace:monastery_biome",
+    "min_y": -64,
+    "height": 384
   }
 }

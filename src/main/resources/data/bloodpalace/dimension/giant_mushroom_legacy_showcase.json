@@ -1,0 +1,24 @@
+{
+  "type": "bloodpalace:showcase",
+  "generator": {
+    "type": "minecraft:flat",
+    "settings": {
+      "biome": "bloodpalace:giant_mushroom_biome",
+      "lakes": false,
+      "features": false,
+      "layers": [
+        {
+          "block": "minecraft:barrier",
+          "height": 1
+        },
+        {
+          "block": "minecraft:air",
+          "height": 255
+        }
+      ],
+      "structure_overrides": [
+        "bloodpalace:giant_mushroom_showcase"
+      ]
+    }
+  }
+}

@@ -1,24 +1,10 @@
 {
   "type": "bloodpalace:showcase",
   "generator": {
-    "type": "minecraft:flat",
-    "settings": {
-      "biome": "bloodpalace:coliseum_biome",
-      "lakes": false,
-      "features": false,
-      "layers": [
-        {
-          "block": "minecraft:barrier",
-          "height": 1
-        },
-        {
-          "block": "minecraft:air",
-          "height": 255
-        }
-      ],
-      "structure_overrides": [
-        "bloodpalace:coliseum_showcase"
-      ]
-    }
+    "type": "bloodpalace:prefab",
+    "prefab": "bloodpalace:coliseum",
+    "biome": "bloodpalace:coliseum_biome",
+    "min_y": -64,
+    "height": 384
   }
 }

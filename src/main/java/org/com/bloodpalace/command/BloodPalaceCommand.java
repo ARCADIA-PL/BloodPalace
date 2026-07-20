@@ -32,6 +32,12 @@ public class BloodPalaceCommand {
                     .executes(BloodPalaceCommand::listStructures))
                 .then(Commands.literal("back")
                     .executes(BloodPalaceCommand::goBack))
+                .then(Commands.literal("debug")
+                    .requires(source -> source.hasPermission(2))
+                    .then(Commands.argument("structure", StringArgumentType.word())
+                        .suggests(BloodPalaceCommand::suggestStructures)
+                        .executes(ctx -> teleportToDebugStructure(
+                            ctx.getSource(), StringArgumentType.getString(ctx, "structure")))))
                 .then(Commands.literal("setspawn")
                     .requires(source -> source.hasPermission(2))
                     .executes(BloodPalaceCommand::setSpawnHere)
@@ -98,6 +104,7 @@ public class BloodPalaceCommand {
                         \u00a76===== BloodPalace Showcase =====
                         \u00a7e/bloodpalace list \u00a77- \u00a7fList structures
                         \u00a7e/bloodpalace <name> \u00a77- \u00a7fEnter showcase dimension
+                        \u00a7e/bloodpalace debug <name> \u00a77- \u00a7fEnter legacy debug dimension
                         \u00a7e/bloodpalace back \u00a77- \u00a7fReturn to origin
                         \u00a7e/bloodpalace setspawn \u00a77- \u00a7fSave current showcase spawn
                         \u00a7e/bloodpalace setspawn <name> \u00a77- \u00a7fSave spawn for a structure
@@ -278,6 +285,11 @@ public class BloodPalaceCommand {
     private static int teleportToStructure(CommandSourceStack source, String structureName)
             throws CommandSyntaxException {
         return ShowcaseTeleports.enter(source, structureName);
+    }
+
+    private static int teleportToDebugStructure(CommandSourceStack source, String structureName)
+            throws CommandSyntaxException {
+        return ShowcaseTeleports.enterDebug(source, structureName);
     }
 
     private static int goBack(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {

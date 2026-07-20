@@ -34,6 +34,14 @@ public final class ShowcaseTeleports {
     }
 
     public static int enter(CommandSourceStack source, String structureName) {
+        return enter(source, structureName, false);
+    }
+
+    public static int enterDebug(CommandSourceStack source, String structureName) {
+        return enter(source, structureName, true);
+    }
+
+    private static int enter(CommandSourceStack source, String structureName, boolean legacyDebug) {
         if (!ShowcaseDimensions.isKnownStructure(structureName)) {
             source.sendFailure(Component.literal("\u00a7cUnknown structure: " + structureName));
             return 0;
@@ -49,12 +57,19 @@ public final class ShowcaseTeleports {
 
         rememberOrigin(player);
 
-        String dimString = ShowcaseDimensions.dimensionIdForStructure(structureName);
-        ResourceKey<Level> dimKey = ShowcaseDimensions.dimensionKeyForStructure(structureName);
-        ResourceLocation dimensionId = ShowcaseDimensions.dimensionLocationForStructure(structureName);
+        String dimString = legacyDebug
+            ? ShowcaseDimensions.legacyDimensionIdForStructure(structureName)
+            : ShowcaseDimensions.dimensionIdForStructure(structureName);
+        ResourceKey<Level> dimKey = legacyDebug
+            ? ShowcaseDimensions.legacyDimensionKeyForStructure(structureName)
+            : ShowcaseDimensions.dimensionKeyForStructure(structureName);
+        ResourceLocation dimensionId = legacyDebug
+            ? ShowcaseDimensions.legacyDimensionLocationForStructure(structureName)
+            : ShowcaseDimensions.dimensionLocationForStructure(structureName);
 
         source.sendSuccess(() -> Component.literal(
-            "\u00a77Preparing \u00a76" + ShowcaseDimensions.formatName(structureName) + "\u00a77..."), false);
+            "\u00a77Preparing " + (legacyDebug ? "\u00a7cDEBUG \u00a76" : "\u00a76")
+                + ShowcaseDimensions.formatName(structureName) + "\u00a77..."), false);
 
         if (ShowcaseHandler.isResetting(dimensionId)) {
             String token = UUID.randomUUID().toString();
@@ -63,7 +78,8 @@ public final class ShowcaseTeleports {
                 "\u00a77Target dimension is resetting, about \u00a7e"
                     + (ShowcaseHandler.resetTicksRemaining(dimensionId) / 20 + 1)
                     + "\u00a77 seconds remaining..."), false);
-            waitForResetAndEnter(player, source.getServer(), dimKey, dimString, structureName, token);
+            waitForResetAndEnter(player, source.getServer(), dimKey, dimensionId,
+                dimString, structureName, token);
             return 1;
         }
 
@@ -170,13 +186,14 @@ public final class ShowcaseTeleports {
     }
 
     private static void waitForResetAndEnter(ServerPlayer player, MinecraftServer server,
-            ResourceKey<Level> dimKey, String dimKeyString, String structureName, String token) {
+            ResourceKey<Level> dimKey, ResourceLocation dimensionId, String dimKeyString,
+            String structureName, String token) {
         server.tell(new TickTask(server.getTickCount() + 1, () -> {
             if (!token.equals(player.getPersistentData().getString(PENDING_ENTER_TOKEN))) return;
 
-            ResourceLocation dimensionId = ShowcaseDimensions.dimensionLocationForStructure(structureName);
             if (ShowcaseHandler.isResetting(dimensionId)) {
-                waitForResetAndEnter(player, server, dimKey, dimKeyString, structureName, token);
+                waitForResetAndEnter(player, server, dimKey, dimensionId,
+                    dimKeyString, structureName, token);
                 return;
             }
 
@@ -198,9 +215,10 @@ public final class ShowcaseTeleports {
     }
 
     private static void doEnter(ServerPlayer player, ServerLevel level, String name) {
-        String dimensionId = ShowcaseDimensions.dimensionIdForStructure(name);
-        player.getPersistentData().putString(SKIP_SPAWN_EVENT_DIM, dimensionId);
-        Optional<SpawnConfig.SpawnPoint> configuredSpawn = SpawnConfig.get(dimensionId);
+        String targetDimensionId = level.dimension().location().toString();
+        String spawnConfigDimensionId = ShowcaseDimensions.dimensionIdForStructure(name);
+        player.getPersistentData().putString(SKIP_SPAWN_EVENT_DIM, targetDimensionId);
+        Optional<SpawnConfig.SpawnPoint> configuredSpawn = SpawnConfig.get(spawnConfigDimensionId);
         if (configuredSpawn.isPresent()) {
             SpawnConfig.SpawnPoint spawn = configuredSpawn.get();
             player.teleportTo(level, spawn.x, spawn.y, spawn.z, spawn.yaw, spawn.pitch);
@@ -211,6 +229,9 @@ public final class ShowcaseTeleports {
                 player.getYRot(), player.getXRot());
         }
         player.sendSystemMessage(Component.literal(
-            "\u00a7aTeleported to \u00a76" + ShowcaseDimensions.formatName(name)));
+            "\u00a7aTeleported to "
+                + (ShowcaseDimensions.isLegacyShowcaseDimension(level.dimension().location())
+                    ? "\u00a7cDEBUG \u00a76" : "\u00a76")
+                + ShowcaseDimensions.formatName(name)));
     }
 }
