@@ -1,11 +1,11 @@
 {
   "format": 1,
   "data_version": 3465,
-  "min_chunk_x": -32,
-  "max_chunk_x": 32,
-  "min_chunk_z": -32,
-  "max_chunk_z": 32,
+  "min_chunk_x": -11,
+  "max_chunk_x": 9,
+  "min_chunk_z": -10,
+  "max_chunk_z": 10,
   "min_y": -64,
   "height": 384,
-  "content_hash": "sha256:a64cb094e191be5bcbda8f8cdf54804d95a93eb9522353389a4c8f63f7146f4b"
+  "content_hash": "sha256:f18a02388d71eb5093bdbea1f16664a31d2d3e682b463d0d1e00831460b2520d"
 }

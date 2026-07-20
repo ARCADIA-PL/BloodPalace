@@ -46,6 +46,7 @@ public final class PrefabExporter {
             .resolve("bloodpalace_prefabs").resolve(prefabId.getPath());
         Path chunksRoot = prefabRoot.resolve("chunks");
         Files.createDirectories(chunksRoot);
+        clearOldChunkFiles(chunksRoot);
 
         MessageDigest digest = sha256();
         Map<Long, List<CompoundTag>> entitiesByChunk = collectEntities(level);
@@ -182,6 +183,16 @@ public final class PrefabExporter {
             return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
+        }
+    }
+
+    private static void clearOldChunkFiles(Path chunksRoot) throws IOException {
+        try (var files = Files.list(chunksRoot)) {
+            for (Path file : files.toList()) {
+                if (Files.isRegularFile(file) && file.getFileName().toString().endsWith(".nbt")) {
+                    Files.delete(file);
+                }
+            }
         }
     }
 
