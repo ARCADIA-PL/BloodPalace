@@ -78,9 +78,12 @@ public class BloodPalaceCommand {
                 .then(Commands.literal("prefab")
                     .requires(source -> source.hasPermission(2))
                     .then(Commands.literal("export")
+                        .then(Commands.argument("radius", IntegerArgumentType.integer(0, 32))
+                            .executes(BloodPalaceCommand::exportCurrentPrefab)))
+                    .then(Commands.literal("exportas")
                         .then(Commands.argument("id", ResourceLocationArgument.id())
                             .then(Commands.argument("radius", IntegerArgumentType.integer(0, 32))
-                                .executes(BloodPalaceCommand::exportPrefab)))))
+                                .executes(BloodPalaceCommand::exportNamedPrefab)))))
                 .then(Commands.argument("structure", StringArgumentType.word())
                     .suggests(BloodPalaceCommand::suggestStructures)
                     .executes(ctx -> teleportToStructure(
@@ -234,12 +237,31 @@ public class BloodPalaceCommand {
         return RoomEditor.delete(ctx.getSource().getPlayerOrException(), roomId);
     }
 
-    private static int exportPrefab(CommandContext<CommandSourceStack> ctx)
+    private static int exportCurrentPrefab(CommandContext<CommandSourceStack> ctx)
             throws CommandSyntaxException {
         CommandSourceStack source = ctx.getSource();
         ServerPlayer player = source.getPlayerOrException();
-        ResourceLocation prefabId = ResourceLocationArgument.getId(ctx, "id");
+        ResourceLocation dimensionId = player.serverLevel().dimension().location();
+        String structureName = ShowcaseDimensions.structureFromShowcaseDimension(dimensionId);
+        if (structureName == null) {
+            source.sendFailure(Component.literal(
+                "Stand in a known BloodPalace showcase dimension before exporting."));
+            return 0;
+        }
+        ResourceLocation prefabId = ResourceLocation.fromNamespaceAndPath(
+            dimensionId.getNamespace(), structureName);
+        return exportPrefab(ctx, player, prefabId);
+    }
 
+    private static int exportNamedPrefab(CommandContext<CommandSourceStack> ctx)
+            throws CommandSyntaxException {
+        return exportPrefab(ctx, ctx.getSource().getPlayerOrException(),
+            ResourceLocationArgument.getId(ctx, "id"));
+    }
+
+    private static int exportPrefab(CommandContext<CommandSourceStack> ctx,
+            ServerPlayer player, ResourceLocation prefabId) {
+        CommandSourceStack source = ctx.getSource();
         int radius = IntegerArgumentType.getInteger(ctx, "radius");
         try {
             PrefabExporter.Result result = PrefabExporter.export(player.serverLevel(), prefabId,
