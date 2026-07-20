@@ -20,6 +20,7 @@ import net.minecraft.world.level.chunk.storage.IOWorker;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.phys.AABB;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.level.ChunkEvent;
@@ -46,17 +47,27 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 public class ShowcaseHandler {
 
     private static final Logger LOGGER = LogUtils.getLogger();
     private static final int BORDER_SIZE = 500;
     private static final int RESET_DELAY_TICKS = 200;
+    private static final int RESET_RETRY_DELAY_TICKS = 100;
+    private static final String PENDING_RESET_MARKER = "pending-prefab-resets.txt";
+    private static final String STATE_FOLDER = "bloodpalace";
+    private static final String TEMP_SUFFIX = ".tmp";
     private static final String PREFAB_CACHE_MARKER = "prefab-cache.fingerprint";
 
     private static final Map<ResourceLocation, Boolean> RESET_STARTED = new HashMap<>();
     private static final Map<ResourceLocation, Integer> RESET_COUNTDOWN = new HashMap<>();
+    private static final Map<ResourceLocation, Integer> RESET_RETRY_COUNTDOWN = new HashMap<>();
     private static final Set<ResourceLocation> RESET_QUEUE = new HashSet<>();
+    private static final Set<ResourceLocation> DIRTY_PRODUCTION_DIMENSIONS = new HashSet<>();
+    private static final Set<ResourceLocation> STARTUP_RECOVERY_DIMENSIONS = new HashSet<>();
+    private static final Map<UUID, ResourceLocation> DEATH_SHOWCASE_ORIGINS = new HashMap<>();
+    private static final Map<UUID, ResourceLocation> LAST_KNOWN_SHOWCASE_DIMENSIONS = new HashMap<>();
 
     // Structure → preload chunk radius (max_distance_from_center / 16, rounded up)
     private static final Map<String, Integer> HEAVY_STRUCTURES = new LinkedHashMap<>();
@@ -67,6 +78,8 @@ public class ShowcaseHandler {
 
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
+        clearTransientResetState();
+        loadPendingProductionResets(event.getServer());
         invalidateChangedPrefabCaches(event.getServer());
         /*preloadHeavyStructuresSync(event.getServer());*/
     }
@@ -74,8 +87,16 @@ public class ShowcaseHandler {
     @SubscribeEvent
     public void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
-        if (!ShowcaseDimensions.isShowcaseDimension(player.level().dimension().location())) return;
+        ResourceLocation dimensionId = player.level().dimension().location();
+        if (!ShowcaseDimensions.isShowcaseDimension(dimensionId)) return;
+        boolean requiresRecovery = STARTUP_RECOVERY_DIMENSIONS.contains(dimensionId);
+        cancelResetForOccupiedDimension(dimensionId);
+        LAST_KNOWN_SHOWCASE_DIMENSIONS.put(player.getUUID(), dimensionId);
+        markProductionDimensionDirty(player.getServer(), dimensionId);
         RoomCoreManager.ensureForDimension(player.serverLevel());
+        if (requiresRecovery) {
+            evacuatePlayerForPendingReset(player, dimensionId);
+        }
     }
 
     @SubscribeEvent
@@ -86,9 +107,9 @@ public class ShowcaseHandler {
         ResourceLocation fromDim = event.getFrom().location();
 
         if (ShowcaseDimensions.isShowcaseDimension(toDim)) {
-            RESET_STARTED.put(toDim, false);
-            RESET_COUNTDOWN.remove(toDim);
-            RESET_QUEUE.remove(toDim);
+            cancelResetForOccupiedDimension(toDim);
+            LAST_KNOWN_SHOWCASE_DIMENSIONS.put(player.getUUID(), toDim);
+            markProductionDimensionDirty(player.getServer(), toDim);
 
             WorldBorder border = player.serverLevel().getWorldBorder();
             border.setCenter(0, 0);
@@ -105,6 +126,9 @@ public class ShowcaseHandler {
         }
 
         if (ShowcaseDimensions.isShowcaseDimension(fromDim)) {
+            if (fromDim.equals(LAST_KNOWN_SHOWCASE_DIMENSIONS.get(player.getUUID()))) {
+                LAST_KNOWN_SHOWCASE_DIMENSIONS.remove(player.getUUID());
+            }
             scheduleEmptyShowcaseReset(player.getServer(), fromDim);
         }
     }
@@ -112,6 +136,7 @@ public class ShowcaseHandler {
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) return;
+        reconcileShowcasePlayerLocations(event.getServer());
         tickQueuedShowcaseResets(event.getServer());
     }
 
@@ -216,6 +241,38 @@ public class ShowcaseHandler {
         ShowcaseBlockCleaner.cleanChunk(level, chunk);
     }
 
+    private void clearTransientResetState() {
+        RESET_STARTED.clear();
+        RESET_COUNTDOWN.clear();
+        RESET_RETRY_COUNTDOWN.clear();
+        RESET_QUEUE.clear();
+        DIRTY_PRODUCTION_DIMENSIONS.clear();
+        STARTUP_RECOVERY_DIMENSIONS.clear();
+        DEATH_SHOWCASE_ORIGINS.clear();
+        LAST_KNOWN_SHOWCASE_DIMENSIONS.clear();
+    }
+
+    private void reconcileShowcasePlayerLocations(MinecraftServer server) {
+        Map<UUID, ResourceLocation> currentDimensions = new HashMap<>();
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            ResourceLocation dimensionId = player.level().dimension().location();
+            if (ShowcaseDimensions.isShowcaseDimension(dimensionId)) {
+                currentDimensions.put(player.getUUID(), dimensionId);
+            }
+        }
+
+        for (Map.Entry<UUID, ResourceLocation> entry
+                : List.copyOf(LAST_KNOWN_SHOWCASE_DIMENSIONS.entrySet())) {
+            ResourceLocation currentDimension = currentDimensions.get(entry.getKey());
+            if (!entry.getValue().equals(currentDimension)) {
+                scheduleEmptyShowcaseReset(server, entry.getValue());
+            }
+        }
+
+        LAST_KNOWN_SHOWCASE_DIMENSIONS.clear();
+        LAST_KNOWN_SHOWCASE_DIMENSIONS.putAll(currentDimensions);
+    }
+
     private void tickQueuedShowcaseResets(MinecraftServer server) {
         for (ResourceLocation dimensionId : List.copyOf(RESET_QUEUE)) {
             tickShowcaseReset(server, dimensionId);
@@ -225,7 +282,13 @@ public class ShowcaseHandler {
     private void scheduleEmptyShowcaseReset(MinecraftServer server, ResourceLocation dimensionId) {
         if (!ShowcaseDimensions.isShowcaseDimension(dimensionId)) return;
         RESET_QUEUE.add(dimensionId);
-        tickShowcaseReset(server, dimensionId);
+    }
+
+    private void cancelResetForOccupiedDimension(ResourceLocation dimensionId) {
+        RESET_STARTED.remove(dimensionId);
+        RESET_COUNTDOWN.remove(dimensionId);
+        RESET_RETRY_COUNTDOWN.remove(dimensionId);
+        RESET_QUEUE.remove(dimensionId);
     }
 
     private void tickShowcaseReset(MinecraftServer server, ResourceLocation dimensionId) {
@@ -233,30 +296,48 @@ public class ShowcaseHandler {
 
         ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, dimensionId);
         ServerLevel level = server.getLevel(key);
-        if (level == null) return;
-
-        if (!level.players().isEmpty()) {
-            RESET_STARTED.put(dimensionId, false);
-            RESET_COUNTDOWN.remove(dimensionId);
-            RESET_QUEUE.remove(dimensionId);
+        if (level == null) {
+            cancelResetForOccupiedDimension(dimensionId);
             return;
         }
 
+        if (!level.players().isEmpty()) {
+            cancelResetForOccupiedDimension(dimensionId);
+            return;
+        }
+
+        int retryTicks = RESET_RETRY_COUNTDOWN.getOrDefault(dimensionId, 0);
+        if (retryTicks > 0) {
+            RESET_RETRY_COUNTDOWN.put(dimensionId, retryTicks - 1);
+            return;
+        }
+        RESET_RETRY_COUNTDOWN.remove(dimensionId);
+
         if (!RESET_STARTED.getOrDefault(dimensionId, false)) {
-            beginReset(level, dimensionId);
+            if (!beginReset(level, dimensionId)) {
+                RESET_RETRY_COUNTDOWN.put(dimensionId, RESET_RETRY_DELAY_TICKS);
+                return;
+            }
         }
 
         int current = RESET_COUNTDOWN.getOrDefault(dimensionId, 0);
         if (current <= 0) return;
         RESET_COUNTDOWN.put(dimensionId, current - 1);
         if (current == 1) {
-            deleteRegionCaches(level, dimensionId);
             RESET_COUNTDOWN.remove(dimensionId);
-            RESET_QUEUE.remove(dimensionId);
+            if (deleteRegionCaches(level, dimensionId)) {
+                RESET_STARTED.remove(dimensionId);
+                RESET_RETRY_COUNTDOWN.remove(dimensionId);
+                RESET_QUEUE.remove(dimensionId);
+                clearProductionDimensionDirty(server, dimensionId);
+            } else {
+                RESET_STARTED.remove(dimensionId);
+                RESET_RETRY_COUNTDOWN.put(dimensionId, RESET_RETRY_DELAY_TICKS);
+            }
         }
     }
 
-    private void beginReset(ServerLevel level, ResourceLocation dimensionId) {
+    private boolean beginReset(ServerLevel level, ResourceLocation dimensionId) {
         try {
             LOGGER.info("BloodPalace: no players in {}, resetting after {} ticks",
                 dimensionId, RESET_DELAY_TICKS);
@@ -274,9 +355,12 @@ public class ShowcaseHandler {
 
             RESET_STARTED.put(dimensionId, true);
             RESET_COUNTDOWN.put(dimensionId, RESET_DELAY_TICKS);
+            return true;
         } catch (Exception e) {
             LOGGER.error("BloodPalace: failed to begin reset for {}", dimensionId, e);
-            RESET_STARTED.put(dimensionId, true);
+            RESET_STARTED.remove(dimensionId);
+            RESET_COUNTDOWN.remove(dimensionId);
+            return false;
         }
     }
 
@@ -299,6 +383,149 @@ public class ShowcaseHandler {
             LOGGER.error("BloodPalace: failed to reset dimension {}", dimensionId, e);
             return false;
         }
+    }
+
+    @SubscribeEvent
+    public void onPlayerDeath(LivingDeathEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+
+        ResourceLocation dimensionId = player.level().dimension().location();
+        if (!ShowcaseDimensions.isShowcaseDimension(dimensionId)) return;
+        DEATH_SHOWCASE_ORIGINS.put(player.getUUID(), dimensionId);
+    }
+
+    @SubscribeEvent
+    public void onPlayerRespawn(PlayerEvent.PlayerRespawnEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+
+        ResourceLocation sourceDimension = DEATH_SHOWCASE_ORIGINS.remove(player.getUUID());
+        if (sourceDimension == null) return;
+
+        MinecraftServer server = player.getServer();
+        if (server != null) {
+            server.tell(new TickTask(server.getTickCount() + 1,
+                () -> scheduleEmptyShowcaseReset(server, sourceDimension)));
+        }
+    }
+
+    @SubscribeEvent
+    public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+
+        Set<ResourceLocation> departedDimensions = new HashSet<>();
+        ResourceLocation deathOrigin = DEATH_SHOWCASE_ORIGINS.remove(player.getUUID());
+        if (deathOrigin != null) {
+            departedDimensions.add(deathOrigin);
+        }
+
+        ResourceLocation trackedDimension = LAST_KNOWN_SHOWCASE_DIMENSIONS.remove(player.getUUID());
+        if (trackedDimension != null) {
+            departedDimensions.add(trackedDimension);
+        }
+
+        ResourceLocation currentDimension = player.level().dimension().location();
+        if (ShowcaseDimensions.isShowcaseDimension(currentDimension)) {
+            departedDimensions.add(currentDimension);
+        }
+
+        MinecraftServer server = player.getServer();
+        if (server == null) return;
+        for (ResourceLocation dimensionId : departedDimensions) {
+            server.tell(new TickTask(server.getTickCount() + 1,
+                () -> scheduleEmptyShowcaseReset(server, dimensionId)));
+        }
+    }
+
+    private void evacuatePlayerForPendingReset(ServerPlayer player, ResourceLocation dimensionId) {
+        MinecraftServer server = player.getServer();
+        if (server == null) return;
+        server.tell(new TickTask(server.getTickCount() + 1, () -> {
+            if (!dimensionId.equals(player.level().dimension().location())) return;
+            if (!DIRTY_PRODUCTION_DIMENSIONS.contains(dimensionId)) return;
+
+            ServerLevel overworld = server.overworld();
+            BlockPos spawn = overworld.getSharedSpawnPos();
+            player.teleportTo(overworld,
+                spawn.getX() + 0.5, spawn.getY() + 1.0, spawn.getZ() + 0.5,
+                player.getYRot(), player.getXRot());
+        }));
+    }
+
+    private boolean isProductionPrefabDimension(MinecraftServer server,
+            ResourceLocation dimensionId) {
+        if (!ShowcaseDimensions.isShowcaseDimension(dimensionId)
+                || ShowcaseDimensions.isLegacyShowcaseDimension(dimensionId)) {
+            return false;
+        }
+        ResourceKey<Level> key = ResourceKey.create(Registries.DIMENSION, dimensionId);
+        ServerLevel level = server.getLevel(key);
+        return level != null
+            && level.getChunkSource().getGenerator() instanceof PrefabChunkGenerator;
+    }
+
+    private void markProductionDimensionDirty(MinecraftServer server,
+            ResourceLocation dimensionId) {
+        if (!isProductionPrefabDimension(server, dimensionId)) return;
+        if (DIRTY_PRODUCTION_DIMENSIONS.add(dimensionId)) {
+            savePendingProductionResets(server);
+        }
+    }
+
+    private void clearProductionDimensionDirty(MinecraftServer server,
+            ResourceLocation dimensionId) {
+        STARTUP_RECOVERY_DIMENSIONS.remove(dimensionId);
+        if (DIRTY_PRODUCTION_DIMENSIONS.remove(dimensionId)) {
+            savePendingProductionResets(server);
+        }
+    }
+
+    private void loadPendingProductionResets(MinecraftServer server) {
+        Path marker = pendingResetMarker(server);
+        if (!Files.exists(marker)) return;
+        try {
+            for (String line : Files.readAllLines(marker)) {
+                if (line.isBlank()) continue;
+                ResourceLocation dimensionId = ResourceLocation.parse(line.trim());
+                if (!isProductionPrefabDimension(server, dimensionId)) continue;
+                DIRTY_PRODUCTION_DIMENSIONS.add(dimensionId);
+                STARTUP_RECOVERY_DIMENSIONS.add(dimensionId);
+                RESET_QUEUE.add(dimensionId);
+            }
+        } catch (Exception e) {
+            LOGGER.error(PENDING_RESET_MARKER, e);
+        }
+    }
+
+    private void savePendingProductionResets(MinecraftServer server) {
+        Path marker = pendingResetMarker(server);
+        try {
+            Files.createDirectories(marker.getParent());
+            if (DIRTY_PRODUCTION_DIMENSIONS.isEmpty()) {
+                Files.deleteIfExists(marker);
+                return;
+            }
+
+            List<String> lines = DIRTY_PRODUCTION_DIMENSIONS.stream()
+                .map(ResourceLocation::toString)
+                .sorted()
+                .toList();
+            Path temporary = marker.resolveSibling(marker.getFileName() + TEMP_SUFFIX);
+            Files.write(temporary, lines);
+            try {
+                Files.move(temporary, marker,
+                    StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temporary, marker, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException e) {
+            LOGGER.error(PENDING_RESET_MARKER, e);
+        }
+    }
+
+    private Path pendingResetMarker(MinecraftServer server) {
+        return server.getWorldPath(LevelResource.ROOT)
+            .resolve(STATE_FOLDER)
+            .resolve(PENDING_RESET_MARKER);
     }
 
     private void invalidateChangedPrefabCaches(MinecraftServer server) {
@@ -348,11 +575,13 @@ public class ShowcaseHandler {
     }
 
     public static boolean isResetting(ResourceLocation dimensionId) {
-        return RESET_COUNTDOWN.getOrDefault(dimensionId, 0) > 0;
+        return RESET_QUEUE.contains(dimensionId);
     }
 
     public static int resetTicksRemaining(ResourceLocation dimensionId) {
-        return RESET_COUNTDOWN.getOrDefault(dimensionId, 0);
+        int countdown = RESET_COUNTDOWN.getOrDefault(dimensionId, 0);
+        int retry = RESET_RETRY_COUNTDOWN.getOrDefault(dimensionId, 0);
+        return Math.max(1, Math.max(countdown, retry));
     }
 
 }
