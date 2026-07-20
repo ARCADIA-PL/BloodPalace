@@ -14,6 +14,7 @@ import net.minecraft.world.level.Level;
 import org.com.bloodpalace.config.SpawnConfig;
 import org.com.bloodpalace.handler.ShowcaseHandler;
 import org.popcraft.chunky.ChunkyProvider;
+import org.com.bloodpalace.worldgen.prefab.PrefabChunkGenerator;
 
 import java.util.Optional;
 import java.util.UUID;
@@ -143,6 +144,11 @@ public final class ShowcaseTeleports {
 
     private static void preloadAndEnter(ServerPlayer player, ServerLevel level,
             String dimKey, String structureName) {
+        if (level.getChunkSource().getGenerator() instanceof PrefabChunkGenerator) {
+            player.getPersistentData().remove(PENDING_ENTER_TOKEN);
+            doEnter(player, level, structureName);
+            return;
+        }
         try {
             var api = ChunkyProvider.get().getApi();
             String token = UUID.randomUUID().toString();

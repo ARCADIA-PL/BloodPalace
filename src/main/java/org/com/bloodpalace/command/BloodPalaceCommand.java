@@ -9,12 +9,15 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import org.com.bloodpalace.config.SpawnConfig;
 import org.com.bloodpalace.util.RoomEditor;
 import org.com.bloodpalace.util.ShowcaseDimensions;
 import org.com.bloodpalace.util.ShowcaseTeleports;
+import org.com.bloodpalace.worldgen.prefab.PrefabExporter;
 
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
@@ -72,6 +75,12 @@ public class BloodPalaceCommand {
                         .then(Commands.argument("id", StringArgumentType.word())
                             .executes(ctx -> roomDelete(ctx,
                                 StringArgumentType.getString(ctx, "id"))))))
+                .then(Commands.literal("prefab")
+                    .requires(source -> source.hasPermission(2))
+                    .then(Commands.literal("export")
+                        .then(Commands.argument("id", ResourceLocationArgument.id())
+                            .then(Commands.argument("radius", IntegerArgumentType.integer(0, 32))
+                                .executes(BloodPalaceCommand::exportPrefab)))))
                 .then(Commands.argument("structure", StringArgumentType.word())
                     .suggests(BloodPalaceCommand::suggestStructures)
                     .executes(ctx -> teleportToStructure(
@@ -223,6 +232,25 @@ public class BloodPalaceCommand {
     private static int roomDelete(CommandContext<CommandSourceStack> ctx, String roomId)
             throws CommandSyntaxException {
         return RoomEditor.delete(ctx.getSource().getPlayerOrException(), roomId);
+    }
+
+    private static int exportPrefab(CommandContext<CommandSourceStack> ctx)
+            throws CommandSyntaxException {
+        CommandSourceStack source = ctx.getSource();
+        ServerPlayer player = source.getPlayerOrException();
+        ResourceLocation prefabId = ResourceLocationArgument.getId(ctx, "id");
+
+        int radius = IntegerArgumentType.getInteger(ctx, "radius");
+        try {
+            PrefabExporter.Result result = PrefabExporter.export(player.serverLevel(), prefabId,
+                player.chunkPosition().x, player.chunkPosition().z, radius);
+            source.sendSuccess(() -> Component.literal("Exported " + result.chunkCount()
+                + " prefab chunks to " + result.packRoot()), true);
+            return result.chunkCount();
+        } catch (IOException e) {
+            source.sendFailure(Component.literal("Prefab export failed: " + e.getMessage()));
+            return 0;
+        }
     }
 
     private static int teleportToStructure(CommandSourceStack source, String structureName)

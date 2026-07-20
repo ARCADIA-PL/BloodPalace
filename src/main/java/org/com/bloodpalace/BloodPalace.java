@@ -3,6 +3,7 @@ package org.com.bloodpalace;
 import com.mojang.logging.LogUtils;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegisterCommandsEvent;
+import net.minecraftforge.event.AddReloadListenerEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.javafmlmod.FMLJavaModLoadingContext;
 import net.minecraftforge.fml.common.Mod;
@@ -15,6 +16,8 @@ import org.com.bloodpalace.item.BloodPalaceCreativeTabs;
 import org.com.bloodpalace.item.BloodPalaceItems;
 import org.com.bloodpalace.network.BloodPalaceNetwork;
 import org.com.bloodpalace.worldgen.placement.BloodPalacePlacementTypes;
+import org.com.bloodpalace.worldgen.prefab.BloodPalaceChunkGenerators;
+import org.com.bloodpalace.worldgen.prefab.PrefabReloadListener;
 import org.slf4j.Logger;
 
 @SuppressWarnings("removal")
@@ -28,6 +31,7 @@ public class BloodPalace {
         LOGGER.info("BloodPalace mod initialized");
         var modEventBus = FMLJavaModLoadingContext.get().getModEventBus();
         BloodPalacePlacementTypes.STRUCTURE_PLACEMENT_TYPES.register(modEventBus);
+        BloodPalaceChunkGenerators.CHUNK_GENERATORS.register(modEventBus);
         BloodPalaceEntityTypes.ENTITY_TYPES.register(modEventBus);
         BloodPalaceCreativeTabs.CREATIVE_TABS.register(modEventBus);
         BloodPalaceItems.ITEMS.register(modEventBus);
@@ -41,5 +45,10 @@ public class BloodPalace {
     @SubscribeEvent
     public void onRegisterCommands(RegisterCommandsEvent event) {
         BloodPalaceCommand.register(event.getDispatcher());
+    }
+
+    @SubscribeEvent
+    public void onAddReloadListener(AddReloadListenerEvent event) {
+        event.addListener(new PrefabReloadListener());
     }
 }

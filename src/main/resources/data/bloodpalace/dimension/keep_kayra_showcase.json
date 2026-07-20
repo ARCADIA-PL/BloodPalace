@@ -1,24 +1,10 @@
 {
   "type": "bloodpalace:showcase",
   "generator": {
-    "type": "minecraft:flat",
-    "settings": {
-      "biome": "bloodpalace:keep_kayra_biome",
-      "lakes": false,
-      "features": false,
-      "layers": [
-        {
-          "block": "minecraft:barrier",
-          "height": 1
-        },
-        {
-          "block": "minecraft:air",
-          "height": 255
-        }
-      ],
-      "structure_overrides": [
-        "bloodpalace:keep_kayra_showcase"
-      ]
-    }
+    "type": "bloodpalace:prefab",
+    "prefab": "bloodpalace:keep_kayra",
+    "biome": "bloodpalace:keep_kayra_biome",
+    "min_y": -64,
+    "height": 384
   }
 }
