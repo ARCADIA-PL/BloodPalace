@@ -13,7 +13,6 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import org.com.bloodpalace.config.SpawnConfig;
 import org.com.bloodpalace.handler.ShowcaseHandler;
-import org.popcraft.chunky.ChunkyProvider;
 import org.com.bloodpalace.worldgen.prefab.PrefabChunkGenerator;
 
 import java.util.Optional;
@@ -92,11 +91,11 @@ public final class ShowcaseTeleports {
                     + (ShowcaseHandler.resetTicksRemaining(dimensionId) / 20 + 1)
                     + "\u00a77 seconds remaining..."), false);
             waitForResetAndEnter(player, source.getServer(), dimKey, dimensionId,
-                dimString, structureName, token);
+                structureName, token);
             return 1;
         }
 
-        preloadAndEnter(player, level, dimString, structureName);
+        preloadAndEnter(player, level, structureName);
         return 1;
     }
 
@@ -166,25 +165,19 @@ public final class ShowcaseTeleports {
     }
 
     private static void preloadAndEnter(ServerPlayer player, ServerLevel level,
-            String dimKey, String structureName) {
+            String structureName) {
         if (level.getChunkSource().getGenerator() instanceof PrefabChunkGenerator) {
             player.getPersistentData().remove(PENDING_ENTER_TOKEN);
             doEnter(player, level, structureName);
             return;
         }
         try {
-            var api = ChunkyProvider.get().getApi();
             String token = UUID.randomUUID().toString();
             player.getPersistentData().putString(PENDING_ENTER_TOKEN, token);
-
-            api.onGenerationComplete(event -> {
-                if (!dimKey.equals(event.world())) return;
-                player.getServer().tell(new TickTask(player.getServer().getTickCount(), () ->
-                    doEnterIfPending(player, level, structureName, token)));
-            });
-
-            if (!api.isRunning(dimKey)) {
-                api.startTask(dimKey, "square", 0, 0, 200, 200, "concentric");
+            if (!ChunkyPreloadCoordinator.await(player.getServer(), player.getUUID(),
+                    level.dimension(), structureName, token)) {
+                player.getPersistentData().remove(PENDING_ENTER_TOKEN);
+                doEnter(player, level, structureName);
             }
         } catch (Exception e) {
             player.getPersistentData().remove(PENDING_ENTER_TOKEN);
@@ -193,14 +186,14 @@ public final class ShowcaseTeleports {
     }
 
     private static void waitForResetAndEnter(ServerPlayer player, MinecraftServer server,
-            ResourceKey<Level> dimKey, ResourceLocation dimensionId, String dimKeyString,
+            ResourceKey<Level> dimKey, ResourceLocation dimensionId,
             String structureName, String token) {
         server.tell(new TickTask(server.getTickCount() + 1, () -> {
             if (!token.equals(player.getPersistentData().getString(PENDING_ENTER_TOKEN))) return;
 
             if (ShowcaseHandler.isResetting(dimensionId)) {
                 waitForResetAndEnter(player, server, dimKey, dimensionId,
-                    dimKeyString, structureName, token);
+                    structureName, token);
                 return;
             }
 
@@ -211,8 +204,32 @@ public final class ShowcaseTeleports {
                 return;
             }
 
-            preloadAndEnter(player, level, dimKeyString, structureName);
+            preloadAndEnter(player, level, structureName);
         }));
+    }
+
+    static void completeChunkyPreload(ChunkyPreloadCoordinator.PendingEntry entry) {
+        ServerPlayer player = entry.server().getPlayerList().getPlayer(entry.playerId());
+        if (player == null) return;
+        ServerLevel level = entry.server().getLevel(entry.dimension());
+        if (level == null) {
+            expireChunkyPreload(entry);
+            return;
+        }
+        doEnterIfPending(player, level, entry.structureName(), entry.token());
+    }
+
+    static void expireChunkyPreload(ChunkyPreloadCoordinator.PendingEntry entry) {
+        ServerPlayer player = entry.server().getPlayerList().getPlayer(entry.playerId());
+        if (player == null) return;
+        if (!entry.token().equals(player.getPersistentData().getString(PENDING_ENTER_TOKEN))) return;
+        player.getPersistentData().remove(PENDING_ENTER_TOKEN);
+        player.sendSystemMessage(Component.literal("\u00a7cChunk preloading timed out. Please try again."));
+    }
+
+    public static void cancelPendingEnter(ServerPlayer player) {
+        player.getPersistentData().remove(PENDING_ENTER_TOKEN);
+        ChunkyPreloadCoordinator.cancel(player.getUUID());
     }
 
     private static void doEnterIfPending(ServerPlayer player, ServerLevel level, String name, String token) {

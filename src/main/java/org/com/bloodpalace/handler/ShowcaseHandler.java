@@ -25,9 +25,11 @@ import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.level.BlockEvent;
 import net.minecraftforge.event.level.ChunkEvent;
 import net.minecraftforge.event.server.ServerStartedEvent;
+import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import org.com.bloodpalace.util.ShowcaseBlockCleaner;
+import org.com.bloodpalace.util.ChunkyPreloadCoordinator;
 import org.com.bloodpalace.util.ShowcaseDimensions;
 import org.com.bloodpalace.util.ShowcaseTeleports;
 import org.com.bloodpalace.util.RoomCoreManager;
@@ -78,10 +80,17 @@ public class ShowcaseHandler {
 
     @SubscribeEvent
     public void onServerStarted(ServerStartedEvent event) {
+        ChunkyPreloadCoordinator.clear(event.getServer());
         clearTransientResetState();
         loadPendingProductionResets(event.getServer());
         invalidateChangedPrefabCaches(event.getServer());
         /*preloadHeavyStructuresSync(event.getServer());*/
+    }
+
+    @SubscribeEvent
+    public void onServerStopping(ServerStoppingEvent event) {
+        ChunkyPreloadCoordinator.clear(event.getServer());
+        clearTransientResetState();
     }
 
     @SubscribeEvent
@@ -136,6 +145,7 @@ public class ShowcaseHandler {
     @SubscribeEvent
     public void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase == TickEvent.Phase.END) return;
+        ChunkyPreloadCoordinator.tick(event.getServer());
         reconcileShowcasePlayerLocations(event.getServer());
         tickQueuedShowcaseResets(event.getServer());
     }
@@ -411,6 +421,7 @@ public class ShowcaseHandler {
     @SubscribeEvent
     public void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        ShowcaseTeleports.cancelPendingEnter(player);
 
         Set<ResourceLocation> departedDimensions = new HashSet<>();
         ResourceLocation deathOrigin = DEATH_SHOWCASE_ORIGINS.remove(player.getUUID());
