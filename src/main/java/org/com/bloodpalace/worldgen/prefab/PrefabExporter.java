@@ -16,11 +16,14 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 
+import java.io.BufferedOutputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
@@ -44,23 +47,31 @@ public final class PrefabExporter {
             .resolve("bloodpalace").resolve("exports").resolve(safe(prefabId));
         Path prefabRoot = packRoot.resolve("data").resolve(prefabId.getNamespace())
             .resolve("bloodpalace_prefabs").resolve(prefabId.getPath());
+        Files.createDirectories(prefabRoot);
         Path chunksRoot = prefabRoot.resolve("chunks");
-        Files.createDirectories(chunksRoot);
-        clearOldChunkFiles(chunksRoot);
+        Path bundlePath = prefabRoot.resolve("chunks.bin");
+        Path temporaryBundlePath = prefabRoot.resolve("chunks.bin.tmp");
 
         MessageDigest digest = sha256();
         Map<Long, List<CompoundTag>> entitiesByChunk = collectEntities(level);
         int chunkCount = 0;
-        for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
-            for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-                LevelChunk chunk = level.getChunk(chunkX, chunkZ);
-                byte[] encoded = encodeChunk(chunk,
-                    entitiesByChunk.getOrDefault(chunk.getPos().toLong(), List.of()));
-                digest.update(encoded);
-                Files.write(chunksRoot.resolve(chunkX + "." + chunkZ + ".nbt"), encoded);
-                chunkCount++;
+        int expectedChunks = (maxChunkX - minChunkX + 1) * (maxChunkZ - minChunkZ + 1);
+        try (DataOutputStream bundle = new DataOutputStream(new BufferedOutputStream(
+                Files.newOutputStream(temporaryBundlePath)))) {
+            PrefabBundleCodec.writeHeader(bundle, expectedChunks);
+            for (int chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+                for (int chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                    LevelChunk chunk = level.getChunk(chunkX, chunkZ);
+                    byte[] encoded = encodeChunk(chunk,
+                        entitiesByChunk.getOrDefault(chunk.getPos().toLong(), List.of()));
+                    digest.update(encoded);
+                    PrefabBundleCodec.writeChunk(bundle, chunkX, chunkZ, encoded);
+                    chunkCount++;
+                }
             }
         }
+        Files.move(temporaryBundlePath, bundlePath, StandardCopyOption.REPLACE_EXISTING);
+        clearOldChunkFiles(chunksRoot);
 
         String hash = HexFormat.of().formatHex(digest.digest());
         writeManifest(prefabRoot.resolve("manifest.json"), minChunkX, maxChunkX,
@@ -187,12 +198,16 @@ public final class PrefabExporter {
     }
 
     private static void clearOldChunkFiles(Path chunksRoot) throws IOException {
+        if (!Files.isDirectory(chunksRoot)) return;
         try (var files = Files.list(chunksRoot)) {
             for (Path file : files.toList()) {
                 if (Files.isRegularFile(file) && file.getFileName().toString().endsWith(".nbt")) {
                     Files.delete(file);
                 }
             }
+        }
+        try (var files = Files.list(chunksRoot)) {
+            if (files.findAny().isEmpty()) Files.delete(chunksRoot);
         }
     }
 

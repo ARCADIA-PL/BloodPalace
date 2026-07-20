@@ -12,7 +12,6 @@ import net.minecraft.util.GsonHelper;
 import net.minecraft.util.profiling.ProfilerFiller;
 import org.slf4j.Logger;
 
-import java.io.InputStream;
 import java.io.Reader;
 import java.util.HashMap;
 import java.util.HexFormat;
@@ -29,8 +28,8 @@ public final class PrefabReloadListener extends SimplePreparableReloadListener<P
         Map<PrefabRepository.PrefabKey, byte[]> chunks = new HashMap<>();
         manager.listResources(ROOT, id -> id.getPath().endsWith("/manifest.json"))
             .forEach((id, resource) -> readManifest(id, resource, manifests));
-        manager.listResources(ROOT, id -> id.getPath().endsWith(".nbt"))
-            .forEach((id, resource) -> readChunk(id, resource, chunks));
+        manager.listResources(ROOT, id -> id.getPath().endsWith("/chunks.bin"))
+            .forEach((id, resource) -> readBundle(id, resource, chunks));
         manifests.entrySet().removeIf(entry -> !validate(entry.getValue(), chunks));
         chunks.keySet().removeIf(key -> {
             PrefabManifest manifest = manifests.get(key.prefabId());
@@ -69,21 +68,19 @@ public final class PrefabReloadListener extends SimplePreparableReloadListener<P
         }
     }
 
-    private static void readChunk(ResourceLocation resourceId, Resource resource,
+    private static void readBundle(ResourceLocation resourceId, Resource resource,
             Map<PrefabRepository.PrefabKey, byte[]> chunks) {
-        String path = resourceId.getPath();
-        int marker = path.lastIndexOf("/chunks/");
-        if (marker < ROOT.length()) return;
-        String fileName = path.substring(marker + 8, path.length() - 4);
-        String[] coordinates = fileName.split("\\.", 2);
-        if (coordinates.length != 2) return;
-        try (InputStream input = resource.open()) {
-            ResourceLocation prefabId = ResourceLocation.fromNamespaceAndPath(resourceId.getNamespace(),
-                path.substring(ROOT.length() + 1, marker));
-            chunks.put(new PrefabRepository.PrefabKey(prefabId,
-                Integer.parseInt(coordinates[0]), Integer.parseInt(coordinates[1])), input.readAllBytes());
+        try {
+            ResourceLocation prefabId = prefabId(resourceId, "/chunks.bin");
+            Map<PrefabRepository.PrefabKey, byte[]> loaded =
+                PrefabBundleCodec.read(prefabId, resource.open());
+            for (Map.Entry<PrefabRepository.PrefabKey, byte[]> entry : loaded.entrySet()) {
+                if (chunks.put(entry.getKey(), entry.getValue()) != null) {
+                    throw new IllegalStateException("duplicate chunk " + entry.getKey());
+                }
+            }
         } catch (Exception e) {
-            LOGGER.error("BloodPalace: failed to load prefab chunk {}", resourceId, e);
+            LOGGER.error("BloodPalace: failed to load prefab bundle {}", resourceId, e);
         }
     }
 
