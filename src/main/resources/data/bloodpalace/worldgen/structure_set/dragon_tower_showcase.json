@@ -1,0 +1,11 @@
+{
+  "structures": [
+    {
+      "structure": "bloodpalace:dragon_tower_showcase",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "type": "bloodpalace:spawn_pos_placement"
+  }
+}

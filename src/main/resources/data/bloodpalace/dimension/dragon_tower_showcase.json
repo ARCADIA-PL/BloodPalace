@@ -1,0 +1,10 @@
+{
+  "type": "bloodpalace:showcase",
+  "generator": {
+    "type": "bloodpalace:prefab",
+    "prefab": "bloodpalace:dragon_tower",
+    "biome": "bloodpalace:dragon_tower_biome",
+    "min_y": -64,
+    "height": 384
+  }
+}

@@ -103,6 +103,9 @@ dependencies {
     implementation fg.deobf("curse.maven:chloride-931925:6615986")
     implementation fg.deobf("curse.maven:oculus-581495:5299671")
     implementation fg.deobf("curse.maven:when-dungeons-arise-442508:4983862")
+    implementation fg.deobf("curse.maven:bossesrise-1314084:8123166")
+    implementation fg.deobf("curse.maven:geckolib-388172:8285794")
+    implementation fg.deobf("curse.maven:epic-structures-dungeons-1501318:8454517")
     implementation fg.deobf("curse.maven:chunky-pregenerator-forge-485681:5320028")
 }
 

@@ -11,6 +11,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.unusual.block_factorys_bosses.init.BossesRiseBlocks;
 
 import java.util.List;
 
@@ -90,6 +91,7 @@ public final class ShowcaseBlockCleaner {
         return state.is(Blocks.SPAWNER)
             || state.is(Blocks.COBWEB)
             || state.is(Blocks.PLAYER_HEAD)
+                || state.is(BossesRiseBlocks.BOSS_SPAWNER.get())
             || state.is(Blocks.PLAYER_WALL_HEAD);
     }
 

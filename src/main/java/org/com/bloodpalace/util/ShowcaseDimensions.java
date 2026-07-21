@@ -18,14 +18,14 @@ public final class ShowcaseDimensions {
 
     public static final List<String> STRUCTURES = List.of(
         "abandoned_temple", "aviary", "bandit_towers", "bandit_village", "bathhouse",
-        "ceryneian_hind", "coliseum", "fishing_hut", "foundry", "giant_mushroom",
+        "ceryneian_hind", "coliseum", "dragon_tower", "fishing_hut", "foundry", "giant_mushroom",
         "greenwood_pub", "heavenly_challenger", "heavenly_conqueror", "heavenly_rider",
         "illager_campsite", "illager_corsair", "illager_fort", "illager_galley",
         "illager_windmill", "infested_temple", "jungle_tree_house", "keep_kayra",
         "lighthouse", "mechanical_nest", "merchant_campsite", "mining_system", "monastery",
         "mushroom_house", "mushroom_mines", "mushroom_village", "plague_asylum",
         "scorched_mines", "shiraz_palace", "small_blimp", "small_prairie_house",
-        "thornborn_towers", "typhon", "undead_pirate_ship", "wishing_well"
+        "thornborn_towers", "typhon", "underworld_arena", "undead_pirate_ship", "wishing_well"
     );
 
     private ShowcaseDimensions() {

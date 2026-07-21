@@ -1,0 +1,10 @@
+{
+  "type": "bloodpalace:showcase",
+  "generator": {
+    "type": "bloodpalace:prefab",
+    "prefab": "bloodpalace:underworld_arena",
+    "biome": "bloodpalace:underworld_arena_biome",
+    "min_y": -64,
+    "height": 384
+  }
+}

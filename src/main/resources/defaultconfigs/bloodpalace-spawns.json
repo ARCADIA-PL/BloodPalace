@@ -139,6 +139,20 @@
       "z": -28.836180631939772,
       "yaw": 47.045227,
       "pitch": -20.850264
+    },
+    "bloodpalace:underworld_arena_showcase": {
+      "x": 84.61987808015209,
+      "y": 41.74495267857032,
+      "z": -117.97719584938204,
+      "yaw": 87.457275,
+      "pitch": -0.29933184
+    },
+    "bloodpalace:dragon_tower_showcase": {
+      "x": -14.394579022547138,
+      "y": -52.244334246204666,
+      "z": -10.182938531496491,
+      "yaw": 130.96022,
+      "pitch": -1.6495258
     }
   },
   "categories": {
@@ -160,7 +174,9 @@
       "bloodpalace:plague_asylum_showcase",
       "bloodpalace:scorched_mines_showcase",
       "bloodpalace:shiraz_palace_showcase",
-      "bloodpalace:thornborn_towers_showcase"
+      "bloodpalace:thornborn_towers_showcase",
+      "bloodpalace:dragon_tower_showcase",
+      "bloodpalace:underworld_arena_showcase"
     ]
   }
 }
